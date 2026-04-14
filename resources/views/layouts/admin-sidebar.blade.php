@@ -288,7 +288,7 @@
         </div>
         <div style="padding:0.6rem 1rem 0.75rem; border-top:1px solid #1e293b; text-align:center;">
             <span style="font-size:0.68rem; color:#475569; letter-spacing:0.03em;">
-                PulseCore <span style="background:#1e293b; color:#94a3b8; padding:1px 6px; border-radius:4px; font-weight:600;">V1</span>
+                PulseCore <span style="background:#1e293b; color:#94a3b8; padding:1px 6px; border-radius:4px; font-weight:600;">V1.1</span>
                 &nbsp;·&nbsp; Developed by <span style="color:#64748b; font-weight:600;">SamiCodes</span>
             </span>
         </div>
