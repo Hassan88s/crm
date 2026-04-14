@@ -82,57 +82,75 @@ class ReplyController extends Controller
     }
 
     // ── Sync "No Reply" entries ─────────────────────────────────────────────
+    //
+    // Logic: A speaker appears in "No Reply" if their LAST sent email is
+    // more recent than their LAST reply. So:
+    //   - Email sent → appears in "No Reply"
+    //   - Reply received → removed from "No Reply"
+    //   - Follow-up email sent after reply → appears in "No Reply" again
+    //   - New reply to follow-up → removed again
+    // ─────────────────────────────────────────────────────────────────────────
 
     private function syncNoReplyEntries(): void
     {
-        // Get all unique emails we've sent to (successfully)
-        $sentEmails = EmailLog::where('status', 'sent')
+        // Last sent email per recipient (most recent send)
+        $lastSent = EmailLog::where('status', 'sent')
             ->select('to_email', 'to_name', 'speaker_id', 'subject')
             ->selectRaw('MAX(created_at) as last_sent_at')
             ->groupBy('to_email', 'to_name', 'speaker_id', 'subject')
             ->get()
-            ->unique('to_email');
+            ->keyBy(fn($r) => strtolower($r->to_email));
 
-        // Get emails that have a real reply (any category except "No Reply")
-        $repliedEmails = EmailReply::where('category', '!=', 'No Reply')
-            ->pluck('from_email')
-            ->map(fn($e) => strtolower($e))
-            ->toArray();
+        // Last real reply per sender (ignoring "No Reply" placeholders)
+        $lastReply = EmailReply::where('category', '!=', 'No Reply')
+            ->select('from_email')
+            ->selectRaw('MAX(received_at) as last_reply_at')
+            ->groupBy('from_email')
+            ->get()
+            ->keyBy(fn($r) => strtolower($r->from_email));
 
-        // Get emails that already have a "No Reply" entry
-        $existingNoReply = EmailReply::where('category', 'No Reply')
-            ->pluck('from_email')
-            ->map(fn($e) => strtolower($e))
-            ->toArray();
+        foreach ($lastSent as $email => $log) {
+            $lastSentAt  = $log->last_sent_at;
+            $lastReplyAt = $lastReply[$email]->last_reply_at ?? null;
 
-        foreach ($sentEmails as $log) {
-            $email = strtolower($log->to_email);
+            // Determine if we're currently awaiting a reply
+            $awaitingReply = !$lastReplyAt || strtotime($lastSentAt) > strtotime($lastReplyAt);
 
-            // If they replied, remove any "No Reply" entry
-            if (in_array($email, $repliedEmails)) {
-                EmailReply::where('from_email', $email)->where('category', 'No Reply')->delete();
-                continue;
+            // Find existing "No Reply" entry for this email (if any)
+            $existing = EmailReply::where('from_email', $log->to_email)
+                ->where('category', 'No Reply')
+                ->first();
+
+            if ($awaitingReply) {
+                // Should be in "No Reply" — create or update
+                if ($existing) {
+                    // Update the existing entry with latest send info
+                    $existing->update([
+                        'subject'     => 'No reply to: ' . ($log->subject ?? '(no subject)'),
+                        'received_at' => $lastSentAt,
+                        'classified_at' => now(),
+                    ]);
+                } else {
+                    EmailReply::create([
+                        'message_id'    => 'no-reply-' . md5($email . '-' . $lastSentAt),
+                        'speaker_id'    => $log->speaker_id,
+                        'from_email'    => $log->to_email,
+                        'from_name'     => $log->to_name,
+                        'subject'       => 'No reply to: ' . ($log->subject ?? '(no subject)'),
+                        'body_plain'    => 'This speaker was emailed but has not replied yet.',
+                        'received_at'   => $lastSentAt,
+                        'category'      => 'No Reply',
+                        'ai_score'      => null,
+                        'ai_raw'        => null,
+                        'classified_at' => now(),
+                    ]);
+                }
+            } else {
+                // Reply received after last send — remove from "No Reply"
+                if ($existing) {
+                    $existing->delete();
+                }
             }
-
-            // If already has a "No Reply" entry, skip
-            if (in_array($email, $existingNoReply)) {
-                continue;
-            }
-
-            // Create a "No Reply" entry
-            EmailReply::create([
-                'message_id'    => 'no-reply-' . md5($email),
-                'speaker_id'    => $log->speaker_id,
-                'from_email'    => $log->to_email,
-                'from_name'     => $log->to_name,
-                'subject'       => 'No reply to: ' . ($log->subject ?? '(no subject)'),
-                'body_plain'    => 'This speaker was emailed but has not replied yet.',
-                'received_at'   => $log->last_sent_at ?? now(),
-                'category'      => 'No Reply',
-                'ai_score'      => null,
-                'ai_raw'        => null,
-                'classified_at' => now(),
-            ]);
         }
     }
 
