@@ -240,13 +240,13 @@
             Classified Replies
         </a>
 
-         {{-- <a href="{{ route('admin.scraper.index') }}"
+        <a href="{{ route('admin.scraper.index') }}"
            class="nav-item {{ request()->routeIs('admin.scraper*') ? 'active' : '' }}">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
             </svg>
             Web Scraper
-        </a> --}}
+        </a>
 
         <div class="nav-section-label" style="margin-top:1rem;">System</div>
 
