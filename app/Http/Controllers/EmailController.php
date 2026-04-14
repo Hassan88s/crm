@@ -53,8 +53,24 @@ class EmailController extends Controller
         if ($request->hasFile('attachment') && $request->file('attachment')->isValid()) {
             $file           = $request->file('attachment');
             $attachOrigName = $file->getClientOriginalName();
-            $attachPath     = $file->storeAs('email_attachments', uniqid() . '_' . $attachOrigName, 'local');
-            $attachPath     = storage_path('app/' . $attachPath);
+            $safeName       = uniqid() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $attachOrigName);
+
+            // Ensure directory exists
+            $dir = storage_path('app' . DIRECTORY_SEPARATOR . 'email_attachments');
+            if (!is_dir($dir)) {
+                mkdir($dir, 0775, true);
+            }
+
+            // Move file directly to avoid storeAs issues
+            $attachPath = $dir . DIRECTORY_SEPARATOR . $safeName;
+            $file->move($dir, $safeName);
+
+            \Log::info('Email attachment stored', [
+                'path'   => $attachPath,
+                'exists' => file_exists($attachPath),
+                'size'   => file_exists($attachPath) ? filesize($attachPath) : 0,
+                'orig'   => $attachOrigName,
+            ]);
         }
 
         $sent   = 0;
@@ -73,8 +89,13 @@ class EmailController extends Controller
                     $msg->to($speaker->email, $speaker->full_name)
                         ->subject($subject)
                         ->from($fromAddress, $fromName);
-                    if ($attachPath && file_exists($attachPath)) {
-                        $msg->attach($attachPath, ['as' => $attachOrigName]);
+                    if ($attachPath) {
+                        if (file_exists($attachPath)) {
+                            $msg->attach($attachPath, ['as' => $attachOrigName]);
+                            \Log::info('Attachment added to email', ['to' => $speaker->email, 'file' => $attachOrigName]);
+                        } else {
+                            \Log::warning('Attachment file missing', ['path' => $attachPath]);
+                        }
                     }
                 });
 
@@ -148,6 +169,9 @@ class EmailController extends Controller
             'mail.from.address'            => $env['MAIL_FROM_ADDRESS'] ?? '',
             'mail.from.name'               => $env['MAIL_FROM_NAME']    ?? '',
         ]);
+
+        // Purge cached mailer so Laravel uses the fresh config
+        Mail::purge('smtp');
     }
 
     public function aiDraft(Request $request)

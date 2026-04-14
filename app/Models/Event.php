@@ -10,6 +10,7 @@ class Event extends Model
         'name',
         'location',
         'date',
+        'end_date',
         'time',
         'image',
         'description',
@@ -17,7 +18,8 @@ class Event extends Model
     ];
 
     protected $casts = [
-        'date' => 'date',
+        'date'     => 'date',
+        'end_date' => 'date',
     ];
 
     public function speakers()

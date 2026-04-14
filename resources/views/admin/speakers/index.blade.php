@@ -65,6 +65,10 @@
     .action-btn.verify { color:#6366f1; border-color:#c7d2fe; }
     .action-btn.verify:hover { background:#eef2ff; }
     .action-btn.verify:disabled { opacity:0.5; cursor:not-allowed; }
+    .action-btn.linkedin { color:#0077b5; border-color:#b8d4e8; }
+    .action-btn.linkedin:hover { background:#f0f7fb; }
+    .action-btn.linkedin:disabled { opacity:0.5; cursor:not-allowed; }
+
     .action-btn svg { width:13px; height:13px; }
     .verify-spin { display:inline-block; width:11px; height:11px; border:2px solid #c7d2fe; border-top-color:#6366f1; border-radius:50%; animation:vspin 0.7s linear infinite; vertical-align:middle; }
     @keyframes vspin { to { transform:rotate(360deg); } }
@@ -169,16 +173,18 @@
 {{-- Search + Event filter toolbar --}}
 <div class="toolbar">
     <div class="toolbar-left">
+        <form method="GET" action="{{ route('admin.speakers.index') }}" id="search-form" style="display:flex;align-items:center;gap:8px;">
         <div class="search-box">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
             </svg>
-            <input type="text" id="search-input" placeholder="Search by name, company, country…" oninput="filterSpeakers(this.value)">
+            <input type="text" name="search" id="search-input" value="{{ $search ?? '' }}"
+                   placeholder="Search by name, company, c…"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('search-form').submit();}">
         </div>
 
         @if($events->isNotEmpty())
-        <form method="GET" action="{{ route('admin.speakers.index') }}" id="event-filter-form" style="display:flex;align-items:center;gap:6px;">
-            <select name="event_id" onchange="document.getElementById('event-filter-form').submit()"
+            <select name="event_id" onchange="document.getElementById('search-form').submit()"
                     style="padding:0.5rem 0.75rem; border:1.5px solid #e2e8f0; border-radius:8px; font-size:0.875rem; outline:none; color:#0f172a; background:#fff; font-family:inherit; cursor:pointer;">
                 <option value="">All Events</option>
                 @foreach($events as $event)
@@ -187,14 +193,14 @@
                     </option>
                 @endforeach
             </select>
-            @if($eventId)
+            @if($eventId || $search)
                 <a href="{{ route('admin.speakers.index') }}"
                    style="font-size:0.78rem; color:#64748b; text-decoration:none; white-space:nowrap; padding:0.4rem 0.5rem;">
                    ✕ Clear
                 </a>
             @endif
-        </form>
         @endif
+        </form>
     </div>
 </div>
 
@@ -247,7 +253,18 @@
                     </td>
                     <td style="color:#64748b;">{{ $speaker->title ?: '—' }}</td>
                     <td style="font-weight:500;">{{ $speaker->company ?: '—' }}</td>
-                    <td style="color:#64748b; font-size:0.82rem;">{{ $speaker->email }}</td>
+                    <td style="color:#64748b; font-size:0.82rem;">
+                        {{ $speaker->email }}
+                        @if($speaker->linkedin_url)
+                            <a href="{{ $speaker->linkedin_url }}" target="_blank" rel="noopener"
+                               style="display:inline-flex;align-items:center;margin-left:4px;color:#0077b5;"
+                               title="LinkedIn Profile" id="linkedin-{{ $speaker->id }}">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                            </a>
+                        @else
+                            <span id="linkedin-{{ $speaker->id }}"></span>
+                        @endif
+                    </td>
                     <td>
                         @if($speaker->seniority)
                             @php
@@ -294,6 +311,12 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                                 </svg>
                                 Verify
+                            </button>
+                            <button class="action-btn linkedin" id="li-btn-{{ $speaker->id }}"
+                                    onclick="findLinkedIn({{ $speaker->id }}, '{{ route('admin.speakers.findLinkedIn', $speaker) }}', '{{ addslashes($speaker->full_name) }}', '{{ addslashes($speaker->linkedin_url ?? '') }}')"
+                                    title="AI search for LinkedIn profile">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                                LinkedIn
                             </button>
                             <a href="{{ route('admin.speakers.edit', $speaker) }}" class="action-btn">
                                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -424,6 +447,14 @@ async function verifyProfile(id, url, name) {
                                 : '<span style="color:#cbd5e1;">—</span>';
                         }
                     }
+                    // Update LinkedIn icon if found
+                    if (data.updated.linkedin_url && data.speaker.linkedin_url) {
+                        const liEl = document.getElementById('linkedin-' + id);
+                        if (liEl) {
+                            liEl.outerHTML = `<a href="${data.speaker.linkedin_url}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;margin-left:4px;color:#0077b5;" title="LinkedIn Profile" id="linkedin-${id}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg></a>`;
+                        }
+                    }
+
                     // Flash the row green briefly
                     row.style.transition = 'background 300ms';
                     row.style.background = '#f0fdf4';
@@ -489,6 +520,74 @@ function showVerifyToast(name, updated, confidence, error, summary) {
 
 function closeVerifyToast() {
     document.getElementById('verify-toast').classList.remove('show');
+}
+
+// ── Find LinkedIn ───────────────────────────────────────────────────
+async function findLinkedIn(id, url, name, existingUrl) {
+    // If already has LinkedIn URL, open it
+    if (existingUrl && existingUrl.includes('linkedin.com')) {
+        window.open(existingUrl, '_blank');
+        return;
+    }
+
+    const btn = document.getElementById('li-btn-' + id);
+    const origHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="verify-spin" style="border-color:#b8d4e8;border-top-color:#0077b5;"></span> Searching…';
+
+    try {
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': CSRF_TOKEN, 'Accept': 'application/json' },
+        });
+        const data = await resp.json();
+
+        if (!resp.ok || data.error) {
+            showVerifyToast(name, null, null, data.error || 'LinkedIn search failed.', null);
+        } else if (data.linkedin_url) {
+            // Found — update the LinkedIn icon next to email
+            const liEl = document.getElementById('linkedin-' + id);
+            if (liEl) {
+                liEl.outerHTML = `<a href="${data.linkedin_url}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;margin-left:4px;color:#0077b5;" title="LinkedIn Profile" id="linkedin-${id}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg></a>`;
+            }
+
+            // Update button to open URL next time
+            btn.setAttribute('onclick', `findLinkedIn(${id}, '${url}', '${name.replace(/'/g,"\\'")}', '${data.linkedin_url.replace(/'/g,"\\'")}')`);
+
+            // Flash row
+            const row = btn.closest('tr');
+            if (row) {
+                row.style.transition = 'background 300ms';
+                row.style.background = '#f0f7fb';
+                setTimeout(() => { row.style.background = ''; }, 2000);
+            }
+
+            showVerifyToast(name, { linkedin_url: { old: '(empty)', new: data.linkedin_url } }, data.confidence, null, data.summary);
+        } else {
+            // Not found — show clear "not found" message
+            const toast = document.getElementById('verify-toast');
+            const title = document.getElementById('verify-toast-title');
+            const body  = document.getElementById('verify-toast-body');
+            const conf  = document.getElementById('verify-confidence');
+            const sumEl = document.getElementById('verify-summary');
+
+            title.textContent = name;
+            conf.style.display = 'none';
+            body.innerHTML = `<div style="display:flex;align-items:center;gap:6px;font-size:0.84rem;color:#f59e0b;font-weight:600;">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                LinkedIn profile not found
+            </div>`;
+            sumEl.textContent = data.summary || 'Could not find a matching LinkedIn profile for this speaker.';
+            toast.classList.add('show');
+            clearTimeout(window._verifyTimer);
+            window._verifyTimer = setTimeout(() => closeVerifyToast(), 8000);
+        }
+    } catch (e) {
+        showVerifyToast(name, null, null, 'Network error: ' + e.message, null);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+    }
 }
 </script>
 @endsection

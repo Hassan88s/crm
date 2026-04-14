@@ -407,10 +407,25 @@
                                     <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                                 </button>
                             </div>
-                            <span style="font-size:0.74rem; color:#94a3b8;">Get your key at <strong>platform.openai.com/api-keys</strong>. Uses gpt-4o-mini — very low cost (~$0.001 per search).</span>
+                            <span style="font-size:0.74rem; color:#94a3b8;">Get your key at <strong>platform.openai.com/api-keys</strong>. Uses GPT-5.4 with web search for profile verification.</span>
                         </div>
                     </div>
-                    <button type="submit" class="btn">Save API Key</button>
+                    <div class="form-row" style="margin-top:1rem;">
+                        <div class="form-group">
+                            <label class="form-label">Apollo API Key <span style="font-weight:400;color:#94a3b8;">(optional — for LinkedIn lookup)</span></label>
+                            <div style="position:relative;">
+                                <input type="password" name="apollo_api_key" id="apollo-key-input"
+                                       class="form-input" style="padding-right:2.5rem;"
+                                       value="{{ $apolloApiKey ?? '' }}"
+                                       placeholder="apollo-api-key…">
+                                <button type="button" onclick="togglePwd('apollo-key-input', this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#94a3b8;padding:0;">
+                                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                </button>
+                            </div>
+                            <span style="font-size:0.74rem; color:#94a3b8;">Get your key at <strong>app.apollo.io → Settings → Integrations → API</strong>. Used to find LinkedIn profiles fast. Falls back to AI if not set.</span>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn">Save API Keys</button>
                 </form>
 
                 {{-- Usage check --}}

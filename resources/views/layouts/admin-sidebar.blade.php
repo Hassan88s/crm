@@ -133,6 +133,37 @@
         .btn-danger { background: #ef4444; }
 
         a { text-decoration: none; }
+
+        /* ── Mobile hamburger ── */
+        .hamburger {
+            display: none;
+            width: 36px; height: 36px; border-radius: 8px; border: 1px solid #e2e8f0;
+            background: #fff; align-items: center; justify-content: center;
+            cursor: pointer; color: #64748b; flex-shrink: 0;
+        }
+        .hamburger svg { width: 20px; height: 20px; }
+
+        /* ── Mobile overlay ── */
+        .sidebar-overlay {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 45;
+        }
+        .sidebar-overlay.active { display: block; }
+
+        /* ── Responsive ── */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 250ms ease;
+            }
+            .sidebar.open { transform: translateX(0); }
+            .main-wrap { margin-left: 0; }
+            .hamburger { display: flex; }
+            .topbar { padding: 0 1rem; }
+            .main-content { padding: 1.25rem 1rem; }
+        }
     </style>
     @yield('extra-styles')
 </head>
@@ -264,9 +295,17 @@
     </div>
 </aside>
 
+<!-- ═══════════════════ OVERLAY ═══════════════════ -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
 <!-- ═══════════════════ MAIN ═══════════════════ -->
 <div class="main-wrap">
     <header class="topbar">
+        <button class="hamburger" id="hamburgerBtn" onclick="toggleSidebar()" title="Menu">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+        </button>
         <div class="topbar-title">@yield('page-title', 'Dashboard')</div>
         <div class="topbar-actions">
             <button class="icon-btn" title="Notifications">
@@ -297,5 +336,20 @@
     </main>
 </div>
 
+<script>
+function toggleSidebar() {
+    document.querySelector('.sidebar').classList.toggle('open');
+    document.getElementById('sidebarOverlay').classList.toggle('active');
+}
+// Close sidebar when a nav link is clicked (mobile)
+document.querySelectorAll('.nav-item').forEach(function(link) {
+    link.addEventListener('click', function() {
+        if (window.innerWidth <= 768) {
+            document.querySelector('.sidebar').classList.remove('open');
+            document.getElementById('sidebarOverlay').classList.remove('active');
+        }
+    });
+});
+</script>
 </body>
 </html>

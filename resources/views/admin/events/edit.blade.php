@@ -77,10 +77,17 @@
             </div>
 
             <div class="form-group">
-                <label class="form-label">Date <span style="color:#ef4444;">*</span></label>
+                <label class="form-label">Start Date <span style="color:#ef4444;">*</span></label>
                 <input type="date" name="date" value="{{ old('date', $event->date->format('Y-m-d')) }}"
                        class="form-input {{ $errors->has('date') ? 'is-error' : '' }}">
                 @error('date') <span class="error-msg">{{ $message }}</span> @enderror
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">End Date <span style="font-weight:400;color:#94a3b8;">(optional)</span></label>
+                <input type="date" name="end_date" value="{{ old('end_date', $event->end_date?->format('Y-m-d')) }}"
+                       class="form-input {{ $errors->has('end_date') ? 'is-error' : '' }}">
+                @error('end_date') <span class="error-msg">{{ $message }}</span> @enderror
             </div>
 
             <div class="form-group">

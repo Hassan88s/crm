@@ -92,6 +92,13 @@
             </div>
 
             <div class="form-group">
+                <label class="form-label">LinkedIn URL</label>
+                <input type="url" name="linkedin_url" value="{{ old('linkedin_url', $speaker->linkedin_url) }}"
+                       class="form-input" placeholder="e.g. https://linkedin.com/in/john-doe">
+                @error('linkedin_url') <span class="error-msg">{{ $message }}</span> @enderror
+            </div>
+
+            <div class="form-group">
                 <label class="form-label">Seniority</label>
                 <input type="text" name="seniority" value="{{ old('seniority', $speaker->seniority) }}"
                        class="form-input" placeholder="e.g. VP, Director, C-Level">

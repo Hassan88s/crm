@@ -8,7 +8,7 @@ class Speaker extends Model
 {
     protected $fillable = [
         'first_name', 'last_name', 'title', 'company',
-        'email', 'seniority', 'country', 'photo', 'event_id',
+        'email', 'linkedin_url', 'seniority', 'country', 'photo', 'event_id',
     ];
 
     public function getFullNameAttribute(): string

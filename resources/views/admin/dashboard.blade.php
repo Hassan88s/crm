@@ -69,6 +69,22 @@
     .weather-loading { font-size:0.78rem; color:#94a3b8; display:flex; align-items:center; gap:6px; }
     .weather-spinner { width:14px; height:14px; border:2px solid #e2e8f0; border-top-color:#2563eb; border-radius:50%; animation:wspin 0.8s linear infinite; }
     @keyframes wspin { to { transform:rotate(360deg); } }
+
+    /* ── Mobile responsive ── */
+    @media (max-width: 768px) {
+        .stats-grid { grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+        .stat-card { padding: 0.9rem 1rem; }
+        .stat-value { font-size: 1.3rem; }
+        .stat-icon { width: 36px; height: 36px; }
+        .stat-icon svg { width: 18px; height: 18px; }
+        .main-grid-2col { grid-template-columns: 1fr !important; }
+        .quick-actions { grid-template-columns: 1fr 1fr; gap: 0.5rem; padding: 0.75rem; }
+        .quick-btn { font-size: 0.78rem; padding: 0.6rem 0.75rem; }
+        .weather-widget { min-width: auto; }
+    }
+    @media (max-width: 420px) {
+        .stats-grid { grid-template-columns: 1fr; }
+    }
 </style>
 @endsection
 
@@ -257,7 +273,7 @@
 </div>
 
 {{-- Main grid --}}
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; margin-bottom:1.75rem;">
+<div class="main-grid-2col" style="display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; margin-bottom:1.75rem;">
 
     {{-- Recent Events (live) --}}
     <div class="section-card">
@@ -283,7 +299,7 @@
                 <div style="flex:1; min-width:0;">
                     <div style="font-weight:600; font-size:0.875rem; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ $event->name }}</div>
                     <div style="font-size:0.75rem; color:#94a3b8; margin-top:2px;">
-                        {{ $event->date->format('M d, Y') }} · {{ $event->location }}
+                        {{ $event->date->format('M d, Y') }}@if($event->end_date) — {{ $event->end_date->format('M d, Y') }}@endif · {{ $event->location }}
                     </div>
                 </div>
                 <span class="badge badge-{{ $event->status }}">{{ ucfirst($event->status) }}</span>

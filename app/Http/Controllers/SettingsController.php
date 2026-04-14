@@ -20,6 +20,7 @@ class SettingsController extends Controller
             'IMAP_HOST', 'IMAP_PORT', 'IMAP_USERNAME',
             'IMAP_PASSWORD', 'IMAP_ENCRYPTION',
             'OPENAI_API_KEY',
+            'APOLLO_API_KEY',
         ]);
 
         return view('admin.settings', [
@@ -38,6 +39,7 @@ class SettingsController extends Controller
             'imapPassword'     => $envValues['IMAP_PASSWORD']     ?? '',
             'imapEncryption'   => $envValues['IMAP_ENCRYPTION']   ?? 'ssl',
             'openaiApiKey'     => $envValues['OPENAI_API_KEY']    ?? '',
+            'apolloApiKey'     => $envValues['APOLLO_API_KEY']    ?? '',
         ]);
     }
 
@@ -199,12 +201,18 @@ class SettingsController extends Controller
     {
         $data = $request->validate([
             'openai_api_key' => 'required|string|min:10',
+            'apollo_api_key' => 'nullable|string|min:5',
         ]);
 
         $this->setEnv('OPENAI_API_KEY', $data['openai_api_key']);
+
+        if (!empty($data['apollo_api_key'])) {
+            $this->setEnv('APOLLO_API_KEY', $data['apollo_api_key']);
+        }
+
         \Artisan::call('config:clear');
 
-        return back()->with('success_openai', 'OpenAI API key saved.');
+        return back()->with('success_openai', 'API keys saved.');
     }
 
     public function checkOpenAIUsage()

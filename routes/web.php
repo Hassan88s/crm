@@ -12,7 +12,40 @@ use App\Http\Controllers\RequirementsController;
 use App\Http\Controllers\ReplyController;
 
 Route::get('/', function () {
-    return view('welcome');
+    return redirect('/admin/login');
+});
+
+// ── Deployment route (run migrations, clear cache, link storage) ─────────
+Route::get('/deploy/{token}', function ($token) {
+    if ($token !== env('DEPLOY_TOKEN', 'pulsecore-deploy-2026')) {
+        abort(403, 'Invalid deploy token.');
+    }
+
+    $output = [];
+
+    // Run migrations
+    \Artisan::call('migrate', ['--force' => true]);
+    $output[] = '✓ Migrations: ' . trim(\Artisan::output());
+
+    // Clear caches
+    \Artisan::call('config:clear');
+    $output[] = '✓ Config cache cleared';
+
+    \Artisan::call('route:clear');
+    $output[] = '✓ Route cache cleared';
+
+    \Artisan::call('view:clear');
+    $output[] = '✓ View cache cleared';
+
+    // Storage link
+    try {
+        \Artisan::call('storage:link');
+        $output[] = '✓ Storage linked';
+    } catch (\Exception $e) {
+        $output[] = '⚠ Storage link: ' . $e->getMessage();
+    }
+
+    return '<pre>' . implode("\n", $output) . '</pre>';
 });
 
 // Admin auth routes
@@ -45,6 +78,7 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::put('speakers/{speaker}', [SpeakerController::class, 'update'])->name('speakers.update');
     Route::delete('speakers/{speaker}', [SpeakerController::class, 'destroy'])->name('speakers.destroy');
     Route::post('speakers/{speaker}/verify', [SpeakerController::class, 'verifyProfile'])->name('speakers.verify');
+    Route::post('speakers/{speaker}/find-linkedin', [SpeakerController::class, 'findLinkedIn'])->name('speakers.findLinkedIn');
 
     // Settings
     Route::get('settings', [SettingsController::class, 'index'])->name('settings');
