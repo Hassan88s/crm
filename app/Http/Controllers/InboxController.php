@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Speaker;
 use App\Models\EmailReply;
 use App\Models\EmailLog;
+use App\Models\ImapAccount;
 
 class InboxController extends Controller
 {
@@ -77,6 +78,82 @@ class InboxController extends Controller
 
         $mailbox = $this->buildMailbox($settings, $folder);
         return @\imap_open($mailbox, $user, $pass, 0, 1);
+    }
+
+    /**
+     * Return the list of IMAP accounts to use.
+     * If DB accounts exist (active), use them. Otherwise fall back to a
+     * synthetic account built from .env so existing setups keep working.
+     */
+    private function activeAccounts()
+    {
+        $accounts = ImapAccount::active()->get();
+        if ($accounts->isNotEmpty()) return $accounts;
+
+        // Fallback: synthesize an account from .env
+        $settings = $this->getImapSettings();
+        if (empty($settings['IMAP_HOST']) || empty($settings['IMAP_USERNAME'])) {
+            return collect();
+        }
+
+        $fake = new ImapAccount([
+            'name'       => 'Default',
+            'host'       => $settings['IMAP_HOST'],
+            'port'       => (int)($settings['IMAP_PORT'] ?? 993),
+            'username'   => $settings['IMAP_USERNAME'],
+            'password'   => $settings['IMAP_PASSWORD'] ?? '',
+            'encryption' => $settings['IMAP_ENCRYPTION'] ?? 'ssl',
+            'color'      => '#2563eb',
+            'is_active'  => true,
+        ]);
+        $fake->id = 0; // sentinel for .env fallback
+        return collect([$fake]);
+    }
+
+    private function findAccount(?int $id): ?ImapAccount
+    {
+        $accounts = $this->activeAccounts();
+        if ($id === null) return $accounts->first();
+
+        foreach ($accounts as $acc) {
+            if ((int)$acc->id === (int)$id) return $acc;
+        }
+        return $accounts->first();
+    }
+
+    /**
+     * Resolve a friendly folder for a specific account.
+     */
+    private function resolveFolderForAccount(ImapAccount $account, string $friendly): ?string
+    {
+        if ($friendly === 'inbox') return 'INBOX';
+
+        $candidates = self::FOLDER_MAP[$friendly] ?? [];
+
+        // Discover this account's folders
+        $imap = $account->openConnection('INBOX');
+        if (!$imap) return null;
+
+        $ref = $account->imapServerRef();
+        $rawList = @\imap_list($imap, $ref, '*') ?: [];
+        @\imap_close($imap);
+
+        $available = [];
+        foreach ($rawList as $raw) {
+            $name = str_replace($ref, '', $raw);
+            $name = @\imap_utf7_decode($name) ?: $name;
+            $available[] = $name;
+        }
+
+        foreach ($candidates as $candidate) {
+            if (in_array($candidate, $available)) return $candidate;
+        }
+        foreach ($candidates as $candidate) {
+            foreach ($available as $avail) {
+                if (strtolower($avail) === strtolower($candidate)) return $avail;
+            }
+        }
+        return null;
     }
 
     // ── Discover available IMAP folders ─────────────────────────────────────
@@ -178,55 +255,87 @@ class InboxController extends Controller
 
     public function index(Request $request)
     {
-        $settings   = $this->getImapSettings();
-        $configured = !empty($settings['IMAP_HOST']) && !empty($settings['IMAP_USERNAME']);
-        $emails     = [];
-        $error      = null;
-        $total      = 0;
-        $unread     = 0;
-        $page       = max(1, (int) $request->get('page', 1));
-        $perPage    = 20;
+        $accounts = $this->activeAccounts();
+        $configured = $accounts->isNotEmpty();
+        $settings = $this->getImapSettings();
 
-        $folder     = $request->get('folder', 'inbox');
+        $emails   = [];
+        $error    = null;
+        $total    = 0;
+        $unread   = 0;
+        $page     = max(1, (int) $request->get('page', 1));
+        $perPage  = 20;
+
+        $folder = $request->get('folder', 'inbox');
         if (!array_key_exists($folder, self::FOLDER_LABELS)) $folder = 'inbox';
 
-        $folders    = [];
+        $folders     = [];
         $folderLabel = self::FOLDER_LABELS[$folder];
 
+        // Initial folder list (uses first account for display purposes)
+        foreach (self::FOLDER_LABELS as $key => $label) {
+            $folders[$key] = [
+                'key'       => $key,
+                'label'     => $label,
+                'imap_name' => $key === 'inbox' ? 'INBOX' : null,
+                'available' => true,
+                'unread'    => 0,
+                'total'     => 0,
+            ];
+        }
+
         if ($configured) {
-            $folders    = $this->buildFolderList();
-            $imapFolder = $this->resolveFolder($folder);
+            $errors = [];
+            foreach ($accounts as $account) {
+                $imapFolder = $this->resolveFolderForAccount($account, $folder);
+                if (!$imapFolder) continue;
 
-            if (!$imapFolder) {
-                $error = "Folder \"{$folderLabel}\" is not available on this mail server.";
-            } else {
-                $imap = $this->connect($imapFolder);
-
+                $imap = $account->openConnection($imapFolder);
                 if (!$imap) {
-                    $error = 'Could not connect to IMAP server. ' . \imap_last_error();
-                } else {
-                    $total = \imap_num_msg($imap);
-                    $unseen = \imap_search($imap, 'UNSEEN') ?: [];
-                    $unread = count($unseen);
-
-                    // Update folder counts
-                    if (isset($folders[$folder])) {
-                        $folders[$folder]['total']  = $total;
-                        $folders[$folder]['unread'] = $unread;
-                    }
-
-                    // Paging: newest first
-                    $from = max(1, $total - ($page * $perPage) + 1);
-                    $to   = max(1, $total - (($page - 1) * $perPage));
-
-                    if ($total > 0 && $from <= $to) {
-                        $overview = \imap_fetch_overview($imap, "{$from}:{$to}", 0);
-                        $emails   = array_reverse($overview ?: []);
-                    }
-
-                    \imap_close($imap);
+                    $errors[] = "{$account->name}: " . \imap_last_error();
+                    continue;
                 }
+
+                $accountTotal = \imap_num_msg($imap);
+                $unseen       = \imap_search($imap, 'UNSEEN') ?: [];
+                $accountUnread = count($unseen);
+
+                $total  += $accountTotal;
+                $unread += $accountUnread;
+                $folders[$folder]['total']  += $accountTotal;
+                $folders[$folder]['unread'] += $accountUnread;
+
+                if ($accountTotal > 0) {
+                    // Fetch all overviews in reasonable range (last 200 per account)
+                    $cap = min($accountTotal, 200);
+                    $from = max(1, $accountTotal - $cap + 1);
+                    $to   = $accountTotal;
+                    $overview = \imap_fetch_overview($imap, "{$from}:{$to}", 0) ?: [];
+                    foreach ($overview as $ov) {
+                        $ov->_account_id    = $account->id;
+                        $ov->_account_name  = $account->name;
+                        $ov->_account_color = $account->color;
+                        $ov->_ts            = strtotime($ov->date ?? 'now') ?: 0;
+                        $emails[] = $ov;
+                    }
+                }
+
+                \imap_close($imap);
             }
+
+            if (!empty($errors) && empty($emails)) {
+                $error = 'Could not connect to IMAP: ' . implode(' | ', $errors);
+            }
+
+            // Sort merged feed by date desc
+            usort($emails, fn($a, $b) => ($b->_ts ?? 0) <=> ($a->_ts ?? 0));
+
+            // Manual pagination
+            $totalLoaded = count($emails);
+            $start       = ($page - 1) * $perPage;
+            $emails      = array_slice($emails, $start, $perPage);
+            // Override total/lastPage to reflect what was actually loaded
+            $total = $totalLoaded;
         }
 
         $lastPage = $total > 0 ? (int) ceil($total / $perPage) : 1;
@@ -234,7 +343,7 @@ class InboxController extends Controller
         return view('admin.inbox.index', compact(
             'emails', 'error', 'configured', 'total', 'unread',
             'page', 'perPage', 'lastPage', 'settings',
-            'folder', 'folders', 'folderLabel'
+            'folder', 'folders', 'folderLabel', 'accounts'
         ));
     }
 
@@ -245,9 +354,16 @@ class InboxController extends Controller
         $folder     = $request->get('folder', 'inbox');
         if (!array_key_exists($folder, self::FOLDER_LABELS)) $folder = 'inbox';
         $folderLabel = self::FOLDER_LABELS[$folder];
-        $imapFolder  = $this->resolveFolder($folder) ?? 'INBOX';
 
-        $imap = $this->connect($imapFolder);
+        $accountId = $request->query('account_id');
+        $account   = $this->findAccount($accountId !== null ? (int)$accountId : null);
+        if (!$account) {
+            return redirect()->route('admin.inbox.index', ['folder' => $folder])
+                ->with('error', 'No IMAP account configured.');
+        }
+
+        $imapFolder = $this->resolveFolderForAccount($account, $folder) ?? 'INBOX';
+        $imap = $account->openConnection($imapFolder);
 
         if (!$imap) {
             return redirect()->route('admin.inbox.index', ['folder' => $folder])
@@ -277,7 +393,7 @@ class InboxController extends Controller
         $uid = $msgNo;
         return view('admin.inbox.show', compact(
             'header', 'body', 'isHtml', 'uid', 'attachments',
-            'folder', 'folderLabel'
+            'folder', 'folderLabel', 'account'
         ));
     }
 
@@ -288,14 +404,20 @@ class InboxController extends Controller
         $fromFolder = $request->input('from_folder', 'inbox');
         $toFolder   = $request->input('to_folder', 'trash');
 
-        $fromImap = $this->resolveFolder($fromFolder);
-        $toImap   = $this->resolveFolder($toFolder);
+        $accountId = $request->input('account_id');
+        $account   = $this->findAccount($accountId !== null ? (int)$accountId : null);
+        if (!$account) {
+            return back()->with('error', 'No IMAP account configured.');
+        }
+
+        $fromImap = $this->resolveFolderForAccount($account, $fromFolder);
+        $toImap   = $this->resolveFolderForAccount($account, $toFolder);
 
         if (!$fromImap || !$toImap) {
             return back()->with('error', 'Folder not available on this server.');
         }
 
-        $imap = $this->connect($fromImap);
+        $imap = $account->openConnection($fromImap);
         if (!$imap) {
             return back()->with('error', 'Could not connect: ' . \imap_last_error());
         }
@@ -319,9 +441,13 @@ class InboxController extends Controller
 
     public function markRead(Request $request, int $msgNo)
     {
-        $folder     = $request->get('folder', 'inbox');
-        $imapFolder = $this->resolveFolder($folder) ?? 'INBOX';
-        $imap = $this->connect($imapFolder);
+        $folder    = $request->get('folder', 'inbox');
+        $accountId = $request->input('account_id');
+        $account   = $this->findAccount($accountId !== null ? (int)$accountId : null);
+        if (!$account) return response()->json(['ok' => false], 422);
+
+        $imapFolder = $this->resolveFolderForAccount($account, $folder) ?? 'INBOX';
+        $imap = $account->openConnection($imapFolder);
         if ($imap) {
             \imap_setflag_full($imap, (string)$msgNo, '\\Seen');
             \imap_close($imap);
@@ -333,9 +459,15 @@ class InboxController extends Controller
 
     public function destroy(Request $request, int $msgNo)
     {
-        $folder     = $request->get('folder', 'inbox');
-        $imapFolder = $this->resolveFolder($folder) ?? 'INBOX';
-        $imap = $this->connect($imapFolder);
+        $folder    = $request->get('folder', 'inbox');
+        $accountId = $request->input('account_id') ?? $request->query('account_id');
+        $account   = $this->findAccount($accountId !== null ? (int)$accountId : null);
+        if (!$account) {
+            return back()->with('error', 'No IMAP account configured.');
+        }
+
+        $imapFolder = $this->resolveFolderForAccount($account, $folder) ?? 'INBOX';
+        $imap = $account->openConnection($imapFolder);
         if ($imap) {
             \imap_delete($imap, (string)$msgNo);
             \imap_expunge($imap);

@@ -237,9 +237,14 @@
                         $color     = $avatarColors[$i % count($avatarColors)];
                         $i++;
                     @endphp
-                    <a href="{{ route('admin.inbox.show', ['uid' => $email->msgno, 'folder' => $folder]) }}"
+                    @php
+                        $acctId    = $email->_account_id ?? null;
+                        $acctName  = $email->_account_name ?? '';
+                        $acctColor = $email->_account_color ?? '#94a3b8';
+                    @endphp
+                    <a href="{{ route('admin.inbox.show', ['uid' => $email->msgno, 'folder' => $folder, 'account_id' => $acctId]) }}"
                        class="email-row {{ $isUnread ? 'unread' : '' }}"
-                       data-search="{{ strtolower($fromName . ' ' . $subject) }}">
+                       data-search="{{ strtolower($fromName . ' ' . $subject . ' ' . $acctName) }}">
                         <div style="display:flex; align-items:center; gap:7px; flex-shrink:0;">
                             @if($isUnread)
                                 <div class="em-unread-dot"></div>
@@ -249,8 +254,14 @@
                             <div class="em-avatar" style="background:{{ $color }};">{{ $initial }}</div>
                         </div>
                         <div style="min-width:0;">
-                            <div style="display:flex; align-items:baseline; gap:0.5rem; margin-bottom:2px;">
+                            <div style="display:flex; align-items:baseline; gap:0.5rem; margin-bottom:2px; flex-wrap:wrap;">
                                 <div class="em-from">{{ $fromName }}</div>
+                                @if($acctName)
+                                    <span style="display:inline-flex;align-items:center;gap:4px;background:{{ $acctColor }}1a;color:{{ $acctColor }};border:1px solid {{ $acctColor }}33;padding:1px 7px;border-radius:999px;font-size:0.65rem;font-weight:700;letter-spacing:0.02em;">
+                                        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:{{ $acctColor }};"></span>
+                                        {{ $acctName }}
+                                    </span>
+                                @endif
                             </div>
                             <div class="em-subject">{{ $subject }}</div>
                         </div>
@@ -271,12 +282,13 @@
                                         @csrf
                                         <input type="hidden" name="from_folder" value="trash">
                                         <input type="hidden" name="to_folder" value="inbox">
+                                        <input type="hidden" name="account_id" value="{{ $acctId }}">
                                         <button type="submit" class="em-action-btn move-inbox" title="Move to Inbox">
                                             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
                                         </button>
                                     </form>
                                     {{-- Permanent delete --}}
-                                    <form action="{{ route('admin.inbox.destroy', ['uid' => $email->msgno, 'folder' => 'trash']) }}" method="POST" style="display:inline;"
+                                    <form action="{{ route('admin.inbox.destroy', ['uid' => $email->msgno, 'folder' => 'trash', 'account_id' => $acctId]) }}" method="POST" style="display:inline;"
                                           onsubmit="return confirm('Delete permanently?');">
                                         @csrf @method('DELETE')
                                         <button type="submit" class="em-action-btn" title="Delete permanently">
@@ -289,11 +301,12 @@
                                         @csrf
                                         <input type="hidden" name="from_folder" value="spam">
                                         <input type="hidden" name="to_folder" value="inbox">
+                                        <input type="hidden" name="account_id" value="{{ $acctId }}">
                                         <button type="submit" class="em-action-btn move-inbox" title="Not Spam — move to Inbox">
                                             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                         </button>
                                     </form>
-                                    <form action="{{ route('admin.inbox.destroy', ['uid' => $email->msgno, 'folder' => 'spam']) }}" method="POST" style="display:inline;"
+                                    <form action="{{ route('admin.inbox.destroy', ['uid' => $email->msgno, 'folder' => 'spam', 'account_id' => $acctId]) }}" method="POST" style="display:inline;"
                                           onsubmit="return confirm('Delete permanently?');">
                                         @csrf @method('DELETE')
                                         <button type="submit" class="em-action-btn" title="Delete permanently">
@@ -306,6 +319,7 @@
                                         @csrf
                                         <input type="hidden" name="from_folder" value="{{ $folder }}">
                                         <input type="hidden" name="to_folder" value="spam">
+                                        <input type="hidden" name="account_id" value="{{ $acctId }}">
                                         <button type="submit" class="em-action-btn" title="Move to Spam" style="color:#f59e0b;" onmouseover="this.style.background='#fefce8'" onmouseout="this.style.background='transparent'">
                                             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
                                         </button>
@@ -314,6 +328,7 @@
                                         @csrf
                                         <input type="hidden" name="from_folder" value="{{ $folder }}">
                                         <input type="hidden" name="to_folder" value="trash">
+                                        <input type="hidden" name="account_id" value="{{ $acctId }}">
                                         <button type="submit" class="em-action-btn" title="Move to Trash">
                                             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                         </button>

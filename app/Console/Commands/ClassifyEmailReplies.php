@@ -15,110 +15,112 @@ class ClassifyEmailReplies extends Command
 
     public function handle(): int
     {
-        $settings = (new SettingsController)->readEnvValues([
-            'IMAP_HOST','IMAP_PORT','IMAP_USERNAME','IMAP_PASSWORD','IMAP_ENCRYPTION','OPENAI_API_KEY',
-        ]);
-
-        $host     = $settings['IMAP_HOST']     ?? '';
-        $port     = $settings['IMAP_PORT']     ?? '993';
-        $user     = $settings['IMAP_USERNAME'] ?? '';
-        $pass     = $settings['IMAP_PASSWORD'] ?? '';
-        $enc      = $settings['IMAP_ENCRYPTION'] ?? 'ssl';
+        $settings = (new SettingsController)->readEnvValues(['OPENAI_API_KEY']);
         $apiKey   = $settings['OPENAI_API_KEY'] ?? env('OPENAI_API_KEY', '');
-
-        if (!$host || !$user || !$pass) {
-            $this->error('IMAP not configured.');
-            return 1;
-        }
         if (!$apiKey) {
             $this->error('OPENAI_API_KEY not set.');
             return 1;
         }
 
-        $flags   = match($enc) {
-            'ssl'      => '/imap/ssl/novalidate-cert',
-            'tls'      => '/imap/tls/novalidate-cert',
-            'starttls' => '/imap/starttls/novalidate-cert',
-            default    => '/imap/notls',
-        };
-        $mailbox = '{' . $host . ':' . $port . $flags . '}INBOX';
-        $imap    = @\imap_open($mailbox, $user, $pass, 0, 1);
-
-        if (!$imap) {
-            $this->error('IMAP connect failed: ' . \imap_last_error());
-            return 1;
+        // Collect active accounts from DB; fall back to .env if none
+        $accounts = \App\Models\ImapAccount::active()->get();
+        if ($accounts->isEmpty()) {
+            $env = (new SettingsController)->readEnvValues([
+                'IMAP_HOST','IMAP_PORT','IMAP_USERNAME','IMAP_PASSWORD','IMAP_ENCRYPTION',
+            ]);
+            if (empty($env['IMAP_HOST']) || empty($env['IMAP_USERNAME'])) {
+                $this->error('No IMAP accounts configured and .env IMAP missing.');
+                return 1;
+            }
+            $fake = new \App\Models\ImapAccount([
+                'name'       => 'Default',
+                'host'       => $env['IMAP_HOST'],
+                'port'       => (int)($env['IMAP_PORT'] ?? 993),
+                'username'   => $env['IMAP_USERNAME'],
+                'password'   => $env['IMAP_PASSWORD'] ?? '',
+                'encryption' => $env['IMAP_ENCRYPTION'] ?? 'ssl',
+                'is_active'  => true,
+            ]);
+            $accounts = collect([$fake]);
         }
 
-        $total  = \imap_num_msg($imap);
-        $limit  = (int) $this->option('limit');
-        $from   = max(1, $total - $limit + 1);
+        $limit     = (int) $this->option('limit');
         $processed = 0;
         $skipped   = 0;
         $failed    = 0;
 
-        $this->info("Found {$total} message(s). Scanning last {$limit}...");
-
-        for ($msgNo = $total; $msgNo >= $from; $msgNo--) {
-            // Get Message-ID header for deduplication
-            $rawHeader = \imap_fetchheader($imap, $msgNo);
-            $msgId     = $this->extractHeader($rawHeader, 'Message-ID');
-            if (!$msgId) $msgId = 'msg-' . $msgNo . '-' . md5($rawHeader);
-
-            // Skip if already classified
-            if (EmailReply::where('message_id', $msgId)->exists()) {
-                $skipped++;
+        foreach ($accounts as $account) {
+            $this->info("Connecting to {$account->name} ({$account->username})...");
+            $imap = $account->openConnection('INBOX');
+            if (!$imap) {
+                $this->error("  IMAP connect failed: " . \imap_last_error());
+                $failed++;
                 continue;
             }
 
-            // Parse header info
-            $header   = @\imap_headerinfo($imap, $msgNo);
-            $fromAddr = $header->from[0] ?? null;
-            $fromEmail = $fromAddr ? strtolower(trim($fromAddr->mailbox . '@' . $fromAddr->host)) : '';
-            $fromName  = $fromAddr ? @\imap_utf8($fromAddr->personal ?? '') : '';
-            $subject   = @\imap_utf8($header->subject ?? '(no subject)');
-            $date      = $header->date ?? now()->toRfc2822String();
+            $total = \imap_num_msg($imap);
+            $from  = max(1, $total - $limit + 1);
+            $this->info("  Found {$total} message(s). Scanning last {$limit}...");
 
-            try {
-                $receivedAt = new \DateTime($date);
-            } catch (\Exception $e) {
-                $receivedAt = now();
+            for ($msgNo = $total; $msgNo >= $from; $msgNo--) {
+                $rawHeader = \imap_fetchheader($imap, $msgNo);
+                $msgId     = $this->extractHeader($rawHeader, 'Message-ID');
+                if (!$msgId) $msgId = 'msg-' . $account->id . '-' . $msgNo . '-' . md5($rawHeader);
+
+                if (EmailReply::where('message_id', $msgId)->exists()) {
+                    $skipped++;
+                    continue;
+                }
+
+                $header   = @\imap_headerinfo($imap, $msgNo);
+                $fromAddr = $header->from[0] ?? null;
+                $fromEmail = $fromAddr ? strtolower(trim($fromAddr->mailbox . '@' . $fromAddr->host)) : '';
+                $fromName  = $fromAddr ? @\imap_utf8($fromAddr->personal ?? '') : '';
+                $subject   = @\imap_utf8($header->subject ?? '(no subject)');
+                $date      = $header->date ?? now()->toRfc2822String();
+
+                try {
+                    $receivedAt = new \DateTime($date);
+                } catch (\Exception $e) {
+                    $receivedAt = now();
+                }
+
+                $speaker = $fromEmail ? Speaker::where('email', $fromEmail)->first() : null;
+
+                $structure = \imap_fetchstructure($imap, $msgNo);
+                $bodyPlain = $this->extractPlainBody($imap, $msgNo, $structure);
+                $bodyPlain = $this->cleanBody($bodyPlain);
+
+                if (empty(trim($bodyPlain))) {
+                    $skipped++;
+                    continue;
+                }
+
+                [$category, $score, $raw] = $this->classify($bodyPlain, $subject, $apiKey);
+
+                EmailReply::create([
+                    'message_id'    => $msgId,
+                    'speaker_id'    => $speaker?->id,
+                    'from_email'    => $fromEmail,
+                    'from_name'     => $fromName ?: null,
+                    'subject'       => $subject,
+                    'body_plain'    => $bodyPlain,
+                    'received_at'   => $receivedAt,
+                    'category'      => $category,
+                    'ai_score'      => $score,
+                    'ai_raw'        => $raw,
+                    'classified_at' => now(),
+                ]);
+
+                $this->line("    [{$category}] ({$score}) {$fromEmail} — {$subject}");
+                $processed++;
             }
 
-            // Match speaker
-            $speaker = $fromEmail ? Speaker::where('email', $fromEmail)->first() : null;
-
-            // Extract body
-            $structure = \imap_fetchstructure($imap, $msgNo);
-            $bodyPlain = $this->extractPlainBody($imap, $msgNo, $structure);
-            $bodyPlain = $this->cleanBody($bodyPlain);
-
-            if (empty(trim($bodyPlain))) {
-                $skipped++;
-                continue;
+            \imap_close($imap);
+            if ($account->exists) {
+                $account->update(['last_fetched_at' => now()]);
             }
-
-            // Classify with AI
-            [$category, $score, $raw] = $this->classify($bodyPlain, $subject, $apiKey);
-
-            EmailReply::create([
-                'message_id'    => $msgId,
-                'speaker_id'    => $speaker?->id,
-                'from_email'    => $fromEmail,
-                'from_name'     => $fromName ?: null,
-                'subject'       => $subject,
-                'body_plain'    => $bodyPlain,
-                'received_at'   => $receivedAt,
-                'category'      => $category,
-                'ai_score'      => $score,
-                'ai_raw'        => $raw,
-                'classified_at' => now(),
-            ]);
-
-            $this->line("  [{$category}] ({$score}) {$fromEmail} — {$subject}");
-            $processed++;
         }
-
-        \imap_close($imap);
 
         $this->info("Done. Classified: {$processed}, Skipped (already done): {$skipped}, Failed: {$failed}");
         return 0;

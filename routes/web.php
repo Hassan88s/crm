@@ -11,6 +11,7 @@ use App\Http\Controllers\ScraperController;
 use App\Http\Controllers\RequirementsController;
 use App\Http\Controllers\ReplyController;
 use App\Http\Controllers\SmtpAccountController;
+use App\Http\Controllers\ImapAccountController;
 
 Route::get('/', function () {
     return redirect('/admin/login');
@@ -103,6 +104,16 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::delete('smtp-accounts/{smtp_account}', [SmtpAccountController::class, 'destroy'])->name('smtp-accounts.destroy');
     Route::post('smtp-accounts/{smtp_account}/toggle', [SmtpAccountController::class, 'toggle'])->name('smtp-accounts.toggle');
     Route::post('smtp-accounts/{smtp_account}/test', [SmtpAccountController::class, 'test'])->name('smtp-accounts.test');
+
+    // IMAP Accounts
+    Route::get('imap-accounts', [ImapAccountController::class, 'index'])->name('imap-accounts.index');
+    Route::get('imap-accounts/create', [ImapAccountController::class, 'create'])->name('imap-accounts.create');
+    Route::post('imap-accounts', [ImapAccountController::class, 'store'])->name('imap-accounts.store');
+    Route::get('imap-accounts/{imap_account}/edit', [ImapAccountController::class, 'edit'])->name('imap-accounts.edit');
+    Route::put('imap-accounts/{imap_account}', [ImapAccountController::class, 'update'])->name('imap-accounts.update');
+    Route::delete('imap-accounts/{imap_account}', [ImapAccountController::class, 'destroy'])->name('imap-accounts.destroy');
+    Route::post('imap-accounts/{imap_account}/toggle', [ImapAccountController::class, 'toggle'])->name('imap-accounts.toggle');
+    Route::post('imap-accounts/{imap_account}/test', [ImapAccountController::class, 'test'])->name('imap-accounts.test');
 
     // Inbox (IMAP)
     Route::get('inbox', [InboxController::class, 'index'])->name('inbox.index');
