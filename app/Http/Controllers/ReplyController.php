@@ -163,24 +163,41 @@ class ReplyController extends Controller
             'body'    => 'required|string',
         ]);
 
-        // Apply SMTP config (reuse EmailController logic)
-        $settingsController = new SettingsController();
-        $env = $settingsController->readEnvValues([
-            'MAIL_HOST', 'MAIL_PORT', 'MAIL_USERNAME',
-            'MAIL_PASSWORD', 'MAIL_ENCRYPTION',
-            'MAIL_FROM_ADDRESS', 'MAIL_FROM_NAME',
-        ]);
+        // Try to use a rotating SMTP account; fall back to .env
+        $smtpAccount = \App\Models\SmtpAccount::nextForRotation();
 
-        config([
-            'mail.default'                 => 'smtp',
-            'mail.mailers.smtp.host'       => $env['MAIL_HOST']         ?? '',
-            'mail.mailers.smtp.port'       => $env['MAIL_PORT']         ?? 587,
-            'mail.mailers.smtp.username'   => $env['MAIL_USERNAME']     ?? '',
-            'mail.mailers.smtp.password'   => $env['MAIL_PASSWORD']     ?? '',
-            'mail.mailers.smtp.encryption' => $env['MAIL_ENCRYPTION']   ?? 'tls',
-            'mail.from.address'            => $env['MAIL_FROM_ADDRESS'] ?? '',
-            'mail.from.name'               => $env['MAIL_FROM_NAME']    ?? '',
-        ]);
+        if ($smtpAccount) {
+            config([
+                'mail.default'                 => 'smtp',
+                'mail.mailers.smtp.host'       => $smtpAccount->host,
+                'mail.mailers.smtp.port'       => $smtpAccount->port,
+                'mail.mailers.smtp.username'   => $smtpAccount->username,
+                'mail.mailers.smtp.password'   => $smtpAccount->password,
+                'mail.mailers.smtp.encryption' => $smtpAccount->encryption === 'none' ? null : $smtpAccount->encryption,
+                'mail.from.address'            => $smtpAccount->from_address,
+                'mail.from.name'               => $smtpAccount->from_name,
+            ]);
+            Mail::purge('smtp');
+        } else {
+            // Fallback to .env SMTP
+            $settingsController = new SettingsController();
+            $env = $settingsController->readEnvValues([
+                'MAIL_HOST', 'MAIL_PORT', 'MAIL_USERNAME',
+                'MAIL_PASSWORD', 'MAIL_ENCRYPTION',
+                'MAIL_FROM_ADDRESS', 'MAIL_FROM_NAME',
+            ]);
+            config([
+                'mail.default'                 => 'smtp',
+                'mail.mailers.smtp.host'       => $env['MAIL_HOST']         ?? '',
+                'mail.mailers.smtp.port'       => $env['MAIL_PORT']         ?? 587,
+                'mail.mailers.smtp.username'   => $env['MAIL_USERNAME']     ?? '',
+                'mail.mailers.smtp.password'   => $env['MAIL_PASSWORD']     ?? '',
+                'mail.mailers.smtp.encryption' => $env['MAIL_ENCRYPTION']   ?? 'tls',
+                'mail.from.address'            => $env['MAIL_FROM_ADDRESS'] ?? '',
+                'mail.from.name'               => $env['MAIL_FROM_NAME']    ?? '',
+            ]);
+            Mail::purge('smtp');
+        }
 
         $toEmail     = $reply->from_email;
         $toName      = $reply->from_name ?? $reply->from_email;
@@ -198,24 +215,26 @@ class ReplyController extends Controller
 
             // Log in email_logs
             EmailLog::create([
-                'speaker_id' => $reply->speaker_id,
-                'to_email'   => $toEmail,
-                'to_name'    => $toName,
-                'subject'    => $subject,
-                'body'       => $body,
-                'status'     => 'sent',
+                'speaker_id'      => $reply->speaker_id,
+                'smtp_account_id' => $smtpAccount?->id,
+                'to_email'        => $toEmail,
+                'to_name'         => $toName,
+                'subject'         => $subject,
+                'body'            => $body,
+                'status'          => 'sent',
             ]);
 
             return back()->with('reply_success', 'Reply sent successfully to ' . $toEmail);
         } catch (\Exception $e) {
             EmailLog::create([
-                'speaker_id' => $reply->speaker_id,
-                'to_email'   => $toEmail,
-                'to_name'    => $toName,
-                'subject'    => $subject,
-                'body'       => $body,
-                'status'     => 'failed',
-                'error'      => $e->getMessage(),
+                'speaker_id'      => $reply->speaker_id,
+                'smtp_account_id' => $smtpAccount?->id,
+                'to_email'        => $toEmail,
+                'to_name'         => $toName,
+                'subject'         => $subject,
+                'body'            => $body,
+                'status'          => 'failed',
+                'error'           => $e->getMessage(),
             ]);
 
             return back()->with('reply_error', 'Failed to send reply: ' . $e->getMessage());

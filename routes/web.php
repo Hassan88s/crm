@@ -10,6 +10,7 @@ use App\Http\Controllers\InboxController;
 use App\Http\Controllers\ScraperController;
 use App\Http\Controllers\RequirementsController;
 use App\Http\Controllers\ReplyController;
+use App\Http\Controllers\SmtpAccountController;
 
 Route::get('/', function () {
     return redirect('/admin/login');
@@ -92,6 +93,16 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::get('emails', [EmailController::class, 'index'])->name('emails.index');
     Route::post('emails/send', [EmailController::class, 'send'])->name('emails.send');
     Route::post('emails/ai-draft', [EmailController::class, 'aiDraft'])->name('emails.ai_draft');
+
+    // SMTP Accounts
+    Route::get('smtp-accounts', [SmtpAccountController::class, 'index'])->name('smtp-accounts.index');
+    Route::get('smtp-accounts/create', [SmtpAccountController::class, 'create'])->name('smtp-accounts.create');
+    Route::post('smtp-accounts', [SmtpAccountController::class, 'store'])->name('smtp-accounts.store');
+    Route::get('smtp-accounts/{smtp_account}/edit', [SmtpAccountController::class, 'edit'])->name('smtp-accounts.edit');
+    Route::put('smtp-accounts/{smtp_account}', [SmtpAccountController::class, 'update'])->name('smtp-accounts.update');
+    Route::delete('smtp-accounts/{smtp_account}', [SmtpAccountController::class, 'destroy'])->name('smtp-accounts.destroy');
+    Route::post('smtp-accounts/{smtp_account}/toggle', [SmtpAccountController::class, 'toggle'])->name('smtp-accounts.toggle');
+    Route::post('smtp-accounts/{smtp_account}/test', [SmtpAccountController::class, 'test'])->name('smtp-accounts.test');
 
     // Inbox (IMAP)
     Route::get('inbox', [InboxController::class, 'index'])->name('inbox.index');

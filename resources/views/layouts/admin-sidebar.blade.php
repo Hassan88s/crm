@@ -222,6 +222,15 @@
             Send Invites
         </a>
 
+        <a href="{{ route('admin.smtp-accounts.index') }}"
+           class="nav-item {{ request()->routeIs('admin.smtp-accounts*') ? 'active' : '' }}">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M4 7a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V7zm0 0l8 6 8-6"/>
+            </svg>
+            SMTP Accounts
+        </a>
+
        <a href="{{ route('admin.inbox.index') }}"
            class="nav-item {{ request()->routeIs('admin.inbox*') ? 'active' : '' }}">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

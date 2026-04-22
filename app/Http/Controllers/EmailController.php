@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\EmailLog;
 use App\Models\Speaker;
+use App\Models\SmtpAccount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 
@@ -36,8 +37,12 @@ class EmailController extends Controller
                 : ['speaker_ids' => 'required|array|min:1', 'speaker_ids.*' => 'exists:speakers,id']
         ));
 
-        // Load SMTP config fresh from .env
-        $this->applySmtpConfig();
+        // Check if any active SMTP accounts exist (will be used for rotation)
+        $hasRotation = SmtpAccount::active()->exists();
+        if (!$hasRotation) {
+            // Fallback to .env SMTP if no accounts configured
+            $this->applySmtpConfig();
+        }
 
         $speakers = $byEvent
             ? Speaker::where('event_id', $data['event_id'])->get()
@@ -81,6 +86,12 @@ class EmailController extends Controller
             $subject = $this->replaceVars($data['subject'], $speaker);
             $body    = $this->replaceVars($data['body'], $speaker);
 
+            // Pick next SMTP account for round-robin rotation
+            $smtpAccount = $hasRotation ? SmtpAccount::nextForRotation() : null;
+            if ($smtpAccount) {
+                $this->applySmtpConfigFromAccount($smtpAccount);
+            }
+
             try {
                 $fromAddress = config('mail.from.address');
                 $fromName    = config('mail.from.name');
@@ -100,24 +111,26 @@ class EmailController extends Controller
                 });
 
                 EmailLog::create([
-                    'speaker_id' => $speaker->id,
-                    'to_email'   => $speaker->email,
-                    'to_name'    => $speaker->full_name,
-                    'subject'    => $subject,
-                    'body'       => $body,
-                    'status'     => 'sent',
+                    'speaker_id'       => $speaker->id,
+                    'smtp_account_id'  => $smtpAccount?->id,
+                    'to_email'         => $speaker->email,
+                    'to_name'          => $speaker->full_name,
+                    'subject'          => $subject,
+                    'body'             => $body,
+                    'status'           => 'sent',
                 ]);
 
                 $sent++;
             } catch (\Exception $e) {
                 EmailLog::create([
-                    'speaker_id' => $speaker->id,
-                    'to_email'   => $speaker->email,
-                    'to_name'    => $speaker->full_name,
-                    'subject'    => $subject,
-                    'body'       => $body,
-                    'status'     => 'failed',
-                    'error'      => $e->getMessage(),
+                    'speaker_id'       => $speaker->id,
+                    'smtp_account_id'  => $smtpAccount?->id,
+                    'to_email'         => $speaker->email,
+                    'to_name'          => $speaker->full_name,
+                    'subject'          => $subject,
+                    'body'             => $body,
+                    'status'           => 'failed',
+                    'error'            => $e->getMessage(),
                 ]);
 
                 $failed++;
@@ -171,6 +184,22 @@ class EmailController extends Controller
         ]);
 
         // Purge cached mailer so Laravel uses the fresh config
+        Mail::purge('smtp');
+    }
+
+    private function applySmtpConfigFromAccount(SmtpAccount $account): void
+    {
+        config([
+            'mail.default'                 => 'smtp',
+            'mail.mailers.smtp.host'       => $account->host,
+            'mail.mailers.smtp.port'       => $account->port,
+            'mail.mailers.smtp.username'   => $account->username,
+            'mail.mailers.smtp.password'   => $account->password,
+            'mail.mailers.smtp.encryption' => $account->encryption === 'none' ? null : $account->encryption,
+            'mail.from.address'            => $account->from_address,
+            'mail.from.name'               => $account->from_name,
+        ]);
+
         Mail::purge('smtp');
     }
 
