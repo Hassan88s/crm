@@ -129,7 +129,22 @@
         <div class="meta-item"><div class="label">Throttle</div><div class="value">{{ $campaign->throttle_seconds }}s</div></div>
         <div class="meta-item"><div class="label">Started</div><div class="value">{{ $campaign->started_at?->diffForHumans() ?? '—' }}</div></div>
         <div class="meta-item"><div class="label">Completed</div><div class="value">{{ $campaign->completed_at?->diffForHumans() ?? '—' }}</div></div>
-        <div class="meta-item"><div class="label">Attach PDF</div><div class="value">{{ $campaign->attach_agenda ? 'Yes' : 'No' }}</div></div>
+        <div class="meta-item">
+            <div class="label">Attach PDF to email</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+                <span class="value" style="color:{{ $campaign->attach_agenda ? '#16a34a' : '#dc2626' }};">
+                    {{ $campaign->attach_agenda ? 'Yes' : 'No' }}
+                </span>
+                <form action="{{ route('admin.campaigns.toggleAttach', $campaign) }}" method="POST" style="margin:0;">
+                    @csrf
+                    <button type="submit"
+                            style="background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; padding:3px 9px; font-size:0.72rem; font-weight:600; cursor:pointer; color:#475569;"
+                            title="Toggle whether the PDF is attached to outgoing emails">
+                        Toggle
+                    </button>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
 

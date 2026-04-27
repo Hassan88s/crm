@@ -165,6 +165,15 @@ HTML;
         return back()->with('success', 'Campaign started.');
     }
 
+    public function toggleAttach(Campaign $campaign)
+    {
+        $campaign->update(['attach_agenda' => !$campaign->attach_agenda]);
+        $msg = $campaign->attach_agenda
+            ? 'PDF will now be attached to outgoing emails.'
+            : 'PDF will NOT be attached to outgoing emails (AI still reads it).';
+        return back()->with('success', $msg);
+    }
+
     public function pause(Campaign $campaign)
     {
         if ($campaign->status !== 'running') {

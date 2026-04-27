@@ -100,6 +100,7 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::post('emails',                      [CampaignController::class, 'store'])->name('campaigns.store');
     Route::get('emails/{campaign}',            [CampaignController::class, 'show'])->name('campaigns.show');
     Route::post('emails/{campaign}/start',     [CampaignController::class, 'start'])->name('campaigns.start');
+    Route::post('emails/{campaign}/toggle-attach', [CampaignController::class, 'toggleAttach'])->name('campaigns.toggleAttach');
     Route::post('emails/{campaign}/pause',     [CampaignController::class, 'pause'])->name('campaigns.pause');
     Route::post('emails/{campaign}/resume',    [CampaignController::class, 'resume'])->name('campaigns.resume');
     Route::delete('emails/{campaign}',         [CampaignController::class, 'destroy'])->name('campaigns.destroy');
