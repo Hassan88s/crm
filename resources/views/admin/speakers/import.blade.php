@@ -56,7 +56,7 @@
         <h2 style="font-size:1.15rem; font-weight:700; color:#0f172a; margin-bottom:0.4rem;">Import Speakers from CSV</h2>
         <p style="font-size:0.875rem; color:#64748b; margin-bottom:1.5rem;">Upload a CSV file to bulk-import speakers. Duplicate emails will be skipped.</p>
 
-        <form action="{{ route('admin.speakers.import.post') }}" method="POST" enctype="multipart/form-data">
+        <form action="{{ route('admin.speakers.import.preview') }}" method="POST" enctype="multipart/form-data">
             @csrf
 
             <div class="upload-area" id="drop-area">
@@ -105,7 +105,7 @@
                     <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
                     </svg>
-                    Import Speakers
+                    Preview &amp; Map
                 </button>
                 <a href="{{ route('admin.speakers.index') }}" class="btn btn-outline">Cancel</a>
             </div>

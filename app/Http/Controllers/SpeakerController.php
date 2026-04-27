@@ -5,10 +5,25 @@ namespace App\Http\Controllers;
 use App\Models\Event;
 use App\Models\Speaker;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class SpeakerController extends Controller
 {
+    /** Speaker fields available as CSV mapping targets. */
+    public const SPEAKER_FIELDS = [
+        'first_name'   => 'First Name',
+        'last_name'    => 'Last Name',
+        'full_name'    => 'Full Name (auto-split)',
+        'email'        => 'Email',
+        'title'        => 'Title',
+        'company'      => 'Company',
+        'linkedin_url' => 'LinkedIn URL',
+        'seniority'    => 'Seniority',
+        'country'      => 'Country',
+    ];
+
     public function index(Request $request)
     {
         $events  = Event::orderBy('name')->get();
@@ -695,7 +710,10 @@ LIPROMPT;
         ]);
     }
 
-    public function importCsv(Request $request)
+    /**
+     * Step 1: Upload CSV → parse headers + sample rows → render mapping page.
+     */
+    public function importPreview(Request $request)
     {
         $request->validate([
             'csv_file' => 'required|file|mimes:csv,txt',
@@ -705,87 +723,158 @@ LIPROMPT;
         $eventId = $request->input('event_id') ?: null;
         $file    = $request->file('csv_file');
 
-        // Read file and convert encoding to UTF-8 if needed
+        // Read & normalise encoding to UTF-8
         $rawContent = file_get_contents($file->getRealPath());
         $encoding   = mb_detect_encoding($rawContent, ['UTF-8', 'Windows-1252', 'ISO-8859-1', 'ASCII'], true);
         if ($encoding && $encoding !== 'UTF-8') {
             $rawContent = mb_convert_encoding($rawContent, 'UTF-8', $encoding);
         }
-        // Also handle any remaining non-UTF8 bytes
         $rawContent = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', $rawContent);
 
-        // Write cleaned content to temp file for fgetcsv
-        $tmpPath = tempnam(sys_get_temp_dir(), 'csv_');
+        // Parse header + first 5 sample rows for preview
+        $tmpPath = tempnam(sys_get_temp_dir(), 'csv_preview_');
         file_put_contents($tmpPath, $rawContent);
         $handle = fopen($tmpPath, 'r');
 
-        // Read header row — strip UTF-8 BOM from first cell if present
-        $header = fgetcsv($handle);
-        $header = array_map(fn($h) => strtolower(trim(preg_replace('/^\xEF\xBB\xBF/', '', $h))), $header);
+        $rawHeader = fgetcsv($handle) ?: [];
+        // Strip UTF-8 BOM from first cell only; keep original case for display
+        if (isset($rawHeader[0])) {
+            $rawHeader[0] = preg_replace('/^\xEF\xBB\xBF/', '', $rawHeader[0]);
+        }
+
+        $sampleRows = [];
+        $totalRows  = 0;
+        while (($row = fgetcsv($handle)) !== false) {
+            if (!array_filter($row)) continue;
+            $totalRows++;
+            if (count($sampleRows) < 5) {
+                // Pad/trim to match header length
+                $headerCount = count($rawHeader);
+                if (count($row) < $headerCount) {
+                    $row = array_pad($row, $headerCount, '');
+                } elseif (count($row) > $headerCount) {
+                    $row = array_slice($row, 0, $headerCount);
+                }
+                $sampleRows[] = $row;
+            }
+        }
+        fclose($handle);
+        @unlink($tmpPath);
+
+        if (empty($rawHeader)) {
+            return back()->with('error', 'Could not read any columns from the CSV.');
+        }
+
+        // Cache the cleaned CSV for the next step
+        $cacheKey = 'csv_import:' . (string) Str::uuid();
+        Cache::put($cacheKey, [
+            'csv'        => $rawContent,
+            'filename'   => $file->getClientOriginalName(),
+            'event_id'   => $eventId,
+            'total_rows' => $totalRows,
+        ], now()->addMinutes(30));
+
+        // Auto-suggest a field for each header
+        $suggestions = [];
+        foreach ($rawHeader as $h) {
+            $suggestions[] = $this->guessFieldFor($h);
+        }
+
+        $events = Event::orderBy('name')->get();
+
+        return view('admin.speakers.import-mapping', [
+            'cacheKey'    => $cacheKey,
+            'filename'    => $file->getClientOriginalName(),
+            'header'      => $rawHeader,
+            'sampleRows'  => $sampleRows,
+            'suggestions' => $suggestions,
+            'totalRows'   => $totalRows,
+            'eventId'     => $eventId,
+            'events'      => $events,
+            'fields'      => self::SPEAKER_FIELDS,
+        ]);
+    }
+
+    /**
+     * Step 2: Apply the user's mapping and import all rows.
+     */
+    public function importCsv(Request $request)
+    {
+        $data = $request->validate([
+            'cache_key' => 'required|string',
+            'event_id'  => 'nullable|exists:events,id',
+            'mapping'   => 'required|array|min:1',
+            'mapping.*' => 'string',
+        ]);
+
+        $cached = Cache::get($data['cache_key']);
+        if (!$cached) {
+            return redirect()->route('admin.speakers.import')
+                ->with('error', 'Upload session expired. Please upload your CSV again.');
+        }
+
+        $eventId  = $data['event_id'] ?: ($cached['event_id'] ?? null);
+        $mapping  = $data['mapping']; // [colIndex => 'first_name' | '_skip' | ...]
+
+        // Reverse lookup: target field => column index (last one wins for duplicates)
+        $fieldToCol = [];
+        foreach ($mapping as $idx => $field) {
+            if ($field && $field !== '_skip') {
+                $fieldToCol[$field] = (int) $idx;
+            }
+        }
+
+        // Parse CSV from cache
+        $tmpPath = tempnam(sys_get_temp_dir(), 'csv_apply_');
+        file_put_contents($tmpPath, $cached['csv']);
+        $handle = fopen($tmpPath, 'r');
+        $header = fgetcsv($handle) ?: []; // skip header
 
         $imported = 0;
         $skipped  = 0;
         $errors   = [];
-        $rowNum   = 1; // header is row 1
+        $rowNum   = 1;
 
-        // Log headers for debugging
-        \Log::info('CSV Import headers', ['headers' => $header, 'count' => count($header)]);
+        $colVal = function (array $row, string $field) use ($fieldToCol) {
+            if (!isset($fieldToCol[$field])) return '';
+            $idx = $fieldToCol[$field];
+            return isset($row[$idx]) ? trim((string) $row[$idx]) : '';
+        };
 
         while (($row = fgetcsv($handle)) !== false) {
             $rowNum++;
+            if (!array_filter($row)) continue;
 
-            // Skip completely empty rows
-            if (!array_filter($row)) {
-                continue;
-            }
-
-            // Handle column count mismatch — pad or trim row to match header
-            $headerCount = count($header);
-            $rowCount    = count($row);
-            if ($rowCount < $headerCount) {
-                $row = array_pad($row, $headerCount, '');
-            } elseif ($rowCount > $headerCount) {
-                $row = array_slice($row, 0, $headerCount);
-            }
-
-            $data = array_combine($header, $row);
-
-            // Flexible header mapping — try multiple common variations
             $mapped = [
-                'first_name'   => trim($data['first name'] ?? $data['first_name'] ?? $data['firstname'] ?? $data['first'] ?? ''),
-                'last_name'    => trim($data['last name']  ?? $data['last_name']  ?? $data['lastname']  ?? $data['last']  ?? ''),
-                'title'        => trim($data['title']      ?? $data['job title']  ?? $data['job_title'] ?? $data['jobtitle'] ?? $data['position'] ?? ''),
-                'company'      => trim($data['company']    ?? $data['company name'] ?? $data['company_name'] ?? $data['organization'] ?? ''),
-                'email'        => trim($data['email']      ?? $data['email address'] ?? $data['email_address'] ?? ''),
-                'linkedin_url' => trim($data['profileurl'] ?? $data['linkedin_url'] ?? $data['linkedin'] ?? $data['profile_url'] ?? $data['linkedin url'] ?? $data['linkedinurl'] ?? ''),
-                'seniority'    => trim($data['seniority']  ?? $data['level'] ?? ''),
-                'country'      => trim($data['country']    ?? $data['location'] ?? ''),
+                'first_name'   => $colVal($row, 'first_name'),
+                'last_name'    => $colVal($row, 'last_name'),
+                'title'        => $colVal($row, 'title'),
+                'company'      => $colVal($row, 'company'),
+                'email'        => $colVal($row, 'email'),
+                'linkedin_url' => $colVal($row, 'linkedin_url'),
+                'seniority'    => $colVal($row, 'seniority'),
+                'country'      => $colVal($row, 'country'),
                 'event_id'     => $eventId,
             ];
 
-            // Try to split full name if first/last are empty but "name" or "full name" exists
-            if (empty($mapped['first_name']) && empty($mapped['last_name'])) {
-                $fullName = trim($data['name'] ?? $data['full name'] ?? $data['full_name'] ?? $data['fullname'] ?? $data['speaker'] ?? $data['speaker name'] ?? '');
-                if ($fullName) {
-                    $parts = explode(' ', $fullName, 2);
-                    $mapped['first_name'] = trim($parts[0] ?? '');
-                    $mapped['last_name']  = trim($parts[1] ?? '');
-                }
+            // Full Name (auto-split) virtual field — fills first/last when those aren't mapped or empty
+            $fullName = $colVal($row, 'full_name');
+            if ($fullName && empty($mapped['first_name']) && empty($mapped['last_name'])) {
+                $parts = explode(' ', $fullName, 2);
+                $mapped['first_name'] = trim($parts[0] ?? '');
+                $mapped['last_name']  = trim($parts[1] ?? '');
             }
 
-            // Skip only if no name at all
             if (empty($mapped['first_name']) && empty($mapped['last_name'])) {
                 $skipped++;
                 $errors[] = "Row {$rowNum}: Missing name";
                 continue;
             }
 
-            // Set empty email to null
             if (empty($mapped['email'])) {
                 $mapped['email'] = null;
             }
 
-            // Skip duplicate emails (only if email is provided)
             if ($mapped['email'] && Speaker::where('email', $mapped['email'])->exists()) {
                 $skipped++;
                 $errors[] = "Row {$rowNum}: Duplicate email {$mapped['email']}";
@@ -798,6 +887,7 @@ LIPROMPT;
 
         fclose($handle);
         @unlink($tmpPath);
+        Cache::forget($data['cache_key']);
 
         $message = "{$imported} speaker(s) imported successfully.";
         if ($skipped) {
@@ -809,5 +899,34 @@ LIPROMPT;
         }
 
         return redirect()->route('admin.speakers.index')->with('success', $message);
+    }
+
+    /**
+     * Best-guess speaker field for a CSV header. Returns "_skip" if nothing matches.
+     */
+    private function guessFieldFor(string $header): string
+    {
+        $h = strtolower(trim(preg_replace('/^\xEF\xBB\xBF/', '', $header)));
+        return match (true) {
+            in_array($h, ['first name', 'first_name', 'firstname', 'first', 'fname', 'given name'])
+                => 'first_name',
+            in_array($h, ['last name', 'last_name', 'lastname', 'last', 'lname', 'surname', 'family name'])
+                => 'last_name',
+            in_array($h, ['name', 'full name', 'full_name', 'fullname', 'speaker', 'speaker name'])
+                => 'full_name',
+            in_array($h, ['email', 'email address', 'email_address', 'mail', 'e-mail'])
+                => 'email',
+            in_array($h, ['title', 'job title', 'job_title', 'jobtitle', 'position', 'role'])
+                => 'title',
+            in_array($h, ['company', 'company name', 'company_name', 'organization', 'organisation', 'employer'])
+                => 'company',
+            in_array($h, ['profileurl', 'linkedin_url', 'linkedin', 'profile_url', 'linkedin url', 'linkedinurl', 'profile url'])
+                => 'linkedin_url',
+            in_array($h, ['seniority', 'level', 'rank'])
+                => 'seniority',
+            in_array($h, ['country', 'location', 'region'])
+                => 'country',
+            default => '_skip',
+        };
     }
 }

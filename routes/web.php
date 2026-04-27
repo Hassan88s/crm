@@ -75,6 +75,7 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::post('speakers', [SpeakerController::class, 'store'])->name('speakers.store');
     Route::delete('speakers', [SpeakerController::class, 'destroyAll'])->name('speakers.destroyAll');
     Route::get('speakers/import', [SpeakerController::class, 'importForm'])->name('speakers.import');
+    Route::post('speakers/import/preview', [SpeakerController::class, 'importPreview'])->name('speakers.import.preview');
     Route::post('speakers/import', [SpeakerController::class, 'importCsv'])->name('speakers.import.post');
     Route::get('speakers/{speaker}/edit', [SpeakerController::class, 'edit'])->name('speakers.edit');
     Route::put('speakers/{speaker}', [SpeakerController::class, 'update'])->name('speakers.update');
