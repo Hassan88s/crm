@@ -109,9 +109,12 @@
         </div>
 
         <label class="toggle" style="margin-top:0.75rem;">
-            <input type="checkbox" name="attach_agenda" value="1" {{ old('attach_agenda', '1') ? 'checked' : '' }}>
-            <span class="form-label" style="margin:0;">Attach this PDF to every email</span>
+            <input type="checkbox" name="attach_agenda" value="1" {{ old('attach_agenda') ? 'checked' : '' }}>
+            <span class="form-label" style="margin:0;">Also attach this PDF to every outgoing email</span>
         </label>
+        <p style="font-size:0.75rem; color:#94a3b8; margin-top:4px;">
+            Off by default — the PDF is always read by the AI to pick the topic, but it's not sent to the speaker unless you tick this.
+        </p>
     </div>
 
     {{-- 3. Recipients --}}

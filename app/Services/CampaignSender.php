@@ -188,24 +188,29 @@ OUTPUT — return ONLY valid JSON, no markdown, no commentary:
 {"topic": "<chosen agenda topic>", "subject": "<final subject line>", "body_html": "<final email body as HTML>"}
 PROMPT;
 
+        // Build input — if an agenda PDF was uploaded, include it inline as an input_file
+        // content block so the model can read it. Otherwise pass the prompt as a plain string.
+        if ($campaign->openai_file_id) {
+            $input = [[
+                'role'    => 'user',
+                'content' => [
+                    ['type' => 'input_text', 'text' => $prompt],
+                    ['type' => 'input_file', 'file_id' => $campaign->openai_file_id],
+                ],
+            ]];
+        } else {
+            $input = $prompt;
+        }
+
         $payload = [
             'model'             => 'gpt-5.4',
-            'input'             => $prompt,
-            'instructions'      => 'You write personalised speaker invitations. Read the attached agenda PDF, research the speaker on the web, choose the best matching topic from the agenda, then polish the provided template. Return JSON only.',
+            'input'             => $input,
+            'instructions'      => 'You write personalised speaker invitations. Read the attached agenda PDF (provided in the input), research the speaker on the web, choose the best matching topic from the agenda, then polish the provided template. Return JSON only.',
             'tools'             => [
                 ['type' => 'web_search_preview', 'search_context_size' => 'high'],
             ],
             'max_output_tokens' => 1500,
         ];
-
-        // Attach the agenda PDF if uploaded to OpenAI Files
-        if ($campaign->openai_file_id) {
-            $payload['tools'][] = ['type' => 'file_search'];
-            $payload['attachments'] = [[
-                'file_id' => $campaign->openai_file_id,
-                'tools'   => [['type' => 'file_search']],
-            ]];
-        }
 
         $ch = curl_init('https://api.openai.com/v1/responses');
         curl_setopt_array($ch, [
