@@ -49,7 +49,55 @@ HTML;
         $lastRunIso = \Illuminate\Support\Facades\Cache::get('cron.campaigns.last_run_at');
         $lastRunAt  = $lastRunIso ? \Illuminate\Support\Carbon::parse($lastRunIso) : null;
 
-        return view('admin.campaigns.index', compact('campaigns', 'sentTotal', 'failedTotal', 'lastRunAt'));
+        // ── Chart data ─────────────────────────────────────────────────
+        // 14-day daily volume (sent + failed) from email_logs
+        $days = 14;
+        $start = now()->subDays($days - 1)->startOfDay();
+        $rows = EmailLog::selectRaw('DATE(created_at) as d, status, COUNT(*) as c')
+            ->where('created_at', '>=', $start)
+            ->groupBy('d', 'status')
+            ->orderBy('d')
+            ->get();
+
+        $byDate = [];
+        for ($i = 0; $i < $days; $i++) {
+            $key = $start->copy()->addDays($i)->format('Y-m-d');
+            $byDate[$key] = ['sent' => 0, 'failed' => 0];
+        }
+        foreach ($rows as $r) {
+            $key = $r->d;
+            if (isset($byDate[$key])) {
+                $byDate[$key][$r->status] = (int) $r->c;
+            }
+        }
+        $chartLabels = array_map(
+            fn($d) => \Illuminate\Support\Carbon::parse($d)->format('M j'),
+            array_keys($byDate)
+        );
+        $chartSent   = array_values(array_map(fn($x) => $x['sent'],   $byDate));
+        $chartFailed = array_values(array_map(fn($x) => $x['failed'], $byDate));
+
+        // Recipient status breakdown across all campaigns
+        $statusBreakdown = \App\Models\CampaignRecipient::selectRaw('status, COUNT(*) as c')
+            ->groupBy('status')
+            ->pluck('c', 'status')
+            ->toArray();
+        $statusOrder = ['sent', 'pending', 'processing', 'failed', 'skipped'];
+        $statusLabels = [];
+        $statusValues = [];
+        foreach ($statusOrder as $s) {
+            $count = (int) ($statusBreakdown[$s] ?? 0);
+            if ($count > 0) {
+                $statusLabels[] = ucfirst($s);
+                $statusValues[] = $count;
+            }
+        }
+
+        return view('admin.campaigns.index', compact(
+            'campaigns', 'sentTotal', 'failedTotal', 'lastRunAt',
+            'chartLabels', 'chartSent', 'chartFailed',
+            'statusLabels', 'statusValues'
+        ));
     }
 
     public function create(Request $request)

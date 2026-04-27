@@ -40,6 +40,14 @@
     .action-btn:hover { background:#f1f5f9; border-color:#cbd5e1; }
     .action-btn.danger { color:#dc2626; border-color:#fecaca; }
     .action-btn.danger:hover { background:#fef2f2; border-color:#fca5a5; }
+
+    /* Charts */
+    .charts-row { display:grid; grid-template-columns:2fr 1fr; gap:1rem; margin-bottom:1.25rem; }
+    @media (max-width:900px) { .charts-row { grid-template-columns:1fr; } }
+    .chart-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1.1rem 1.25rem; }
+    .chart-card h3 { font-size:0.82rem; font-weight:700; color:#0f172a; margin-bottom:0.25rem; text-transform:uppercase; letter-spacing:0.05em; }
+    .chart-card p.sub { font-size:0.74rem; color:#94a3b8; margin-bottom:0.85rem; }
+    .chart-wrap { position:relative; height:240px; }
 </style>
 @endsection
 
@@ -112,6 +120,20 @@
     <div class="stat"><div class="label">Running Now</div><div class="value" style="color:#2563eb;">{{ $campaigns->where('status','running')->count() }}</div></div>
 </div>
 
+{{-- Charts --}}
+<div class="charts-row">
+    <div class="chart-card">
+        <h3>Email volume</h3>
+        <p class="sub">Sent &amp; failed emails over the last 14 days</p>
+        <div class="chart-wrap"><canvas id="volumeChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h3>Recipient status</h3>
+        <p class="sub">Across all campaigns</p>
+        <div class="chart-wrap"><canvas id="statusChart"></canvas></div>
+    </div>
+</div>
+
 <div class="camps-card">
     @if($campaigns->isEmpty())
         <div class="empty-state">
@@ -168,5 +190,65 @@
         </table>
     @endif
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    const labels    = @json($chartLabels);
+    const sentData  = @json($chartSent);
+    const failData  = @json($chartFailed);
+    const stLabels  = @json($statusLabels);
+    const stValues  = @json($statusValues);
+
+    if (window.Chart && document.getElementById('volumeChart')) {
+        new Chart(document.getElementById('volumeChart'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label:'Sent',   data:sentData, backgroundColor:'#16a34a', borderRadius:4 },
+                    { label:'Failed', data:failData, backgroundColor:'#ef4444', borderRadius:4 },
+                ],
+            },
+            options: {
+                responsive:true,
+                maintainAspectRatio:false,
+                plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11 } } } },
+                scales:{
+                    x:{ stacked:true, grid:{ display:false }, ticks:{ font:{ size:10 } } },
+                    y:{ stacked:true, beginAtZero:true, ticks:{ precision:0, font:{ size:10 } }, grid:{ color:'#f1f5f9' } },
+                },
+            },
+        });
+    }
+
+    if (window.Chart && document.getElementById('statusChart') && stValues.length) {
+        const palette = {
+            'Sent':'#16a34a', 'Pending':'#94a3b8', 'Processing':'#2563eb',
+            'Failed':'#ef4444', 'Skipped':'#f59e0b',
+        };
+        new Chart(document.getElementById('statusChart'), {
+            type: 'doughnut',
+            data: {
+                labels: stLabels,
+                datasets: [{
+                    data: stValues,
+                    backgroundColor: stLabels.map(l => palette[l] || '#cbd5e1'),
+                    borderWidth: 0,
+                }],
+            },
+            options: {
+                responsive:true,
+                maintainAspectRatio:false,
+                cutout: '62%',
+                plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11 }, boxWidth:12 } } },
+            },
+        });
+    } else if (document.getElementById('statusChart')) {
+        document.getElementById('statusChart').parentElement.innerHTML =
+            '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:0.85rem;">No campaign data yet</div>';
+    }
+})();
+</script>
 
 @endsection
