@@ -28,6 +28,18 @@
 
     .empty-state { text-align:center; padding:3rem 1rem; color:#94a3b8; }
     .empty-state h3 { font-size:1rem; font-weight:600; color:#64748b; margin-bottom:0.3rem; }
+
+    .action-btn {
+        display:inline-flex; align-items:center; gap:5px;
+        padding:0.4rem 0.8rem; border-radius:7px; border:1.5px solid #e2e8f0;
+        font-size:0.78rem; font-weight:600; cursor:pointer;
+        background:#fff; color:#374151; text-decoration:none;
+        transition:all 120ms; white-space:nowrap;
+        font-family:inherit;
+    }
+    .action-btn:hover { background:#f1f5f9; border-color:#cbd5e1; }
+    .action-btn.danger { color:#dc2626; border-color:#fecaca; }
+    .action-btn.danger:hover { background:#fef2f2; border-color:#fca5a5; }
 </style>
 @endsection
 
