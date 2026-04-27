@@ -120,7 +120,7 @@
     <div class="stat"><div class="label">Running Now</div><div class="value" style="color:#2563eb;">{{ $campaigns->where('status','running')->count() }}</div></div>
 </div>
 
-{{-- Charts --}}
+{{-- Charts (temporarily disabled — uncomment to re-enable, also re-enable the <script> block at the bottom of this file)
 <div class="charts-row">
     <div class="chart-card">
         <h3>Email volume</h3>
@@ -133,6 +133,7 @@
         <div class="chart-wrap"><canvas id="statusChart"></canvas></div>
     </div>
 </div>
+--}}
 
 <div class="camps-card">
     @if($campaigns->isEmpty())
@@ -191,14 +192,15 @@
     @endif
 </div>
 
+{{-- Charts script (temporarily disabled — uncomment together with the chart cards above)
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <script>
 (function() {
-    const labels    = @json($chartLabels);
-    const sentData  = @json($chartSent);
-    const failData  = @json($chartFailed);
-    const stLabels  = @json($statusLabels);
-    const stValues  = @json($statusValues);
+    const labels    = @json($chartLabels ?? []);
+    const sentData  = @json($chartSent ?? []);
+    const failData  = @json($chartFailed ?? []);
+    const stLabels  = @json($statusLabels ?? []);
+    const stValues  = @json($statusValues ?? []);
 
     if (window.Chart && document.getElementById('volumeChart')) {
         new Chart(document.getElementById('volumeChart'), {
@@ -250,5 +252,6 @@
     }
 })();
 </script>
+--}}
 
 @endsection
