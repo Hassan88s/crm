@@ -41,10 +41,15 @@ HTML;
 
     public function index()
     {
-        $campaigns = Campaign::withCount('recipients')->latest()->get();
+        $campaigns   = Campaign::withCount('recipients')->latest()->get();
         $sentTotal   = EmailLog::where('status', 'sent')->count();
         $failedTotal = EmailLog::where('status', 'failed')->count();
-        return view('admin.campaigns.index', compact('campaigns', 'sentTotal', 'failedTotal'));
+
+        // Cron / scheduler heartbeat (set by ProcessCampaigns command on every run)
+        $lastRunIso = \Illuminate\Support\Facades\Cache::get('cron.campaigns.last_run_at');
+        $lastRunAt  = $lastRunIso ? \Illuminate\Support\Carbon::parse($lastRunIso) : null;
+
+        return view('admin.campaigns.index', compact('campaigns', 'sentTotal', 'failedTotal', 'lastRunAt'));
     }
 
     public function create(Request $request)

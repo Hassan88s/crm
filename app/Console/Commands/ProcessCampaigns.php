@@ -6,6 +6,7 @@ use App\Models\Campaign;
 use App\Models\CampaignRecipient;
 use App\Services\CampaignSender;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 class ProcessCampaigns extends Command
 {
@@ -14,6 +15,9 @@ class ProcessCampaigns extends Command
 
     public function handle(CampaignSender $sender): int
     {
+        // Heartbeat: record that cron / scheduler reached this command
+        Cache::put('cron.campaigns.last_run_at', now()->toIso8601String(), now()->addDay());
+
         $limit = max(1, (int) $this->option('limit'));
 
         $recipients = CampaignRecipient::query()

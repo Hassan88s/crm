@@ -48,6 +48,38 @@
     </a>
 </div>
 
+{{-- Cron / scheduler heartbeat --}}
+@php
+    $cronOk = $lastRunAt && $lastRunAt->gt(now()->subMinutes(2));
+    $cronWarn = $lastRunAt && $lastRunAt->between(now()->subMinutes(10), now()->subMinutes(2));
+    if ($cronOk) {
+        $cronColor = '#16a34a'; $cronBg = '#f0fdf4'; $cronBorder = '#bbf7d0'; $cronIcon = '✓';
+        $cronText = 'Cron healthy — last ran ' . $lastRunAt->diffForHumans();
+    } elseif ($cronWarn) {
+        $cronColor = '#ca8a04'; $cronBg = '#fefce8'; $cronBorder = '#fde68a'; $cronIcon = '⚠';
+        $cronText = 'Cron may be slow — last ran ' . $lastRunAt->diffForHumans();
+    } else {
+        $cronColor = '#dc2626'; $cronBg = '#fef2f2'; $cronBorder = '#fecaca'; $cronIcon = '✕';
+        $cronText = $lastRunAt
+            ? 'Cron has not run for over 10 minutes — last seen ' . $lastRunAt->diffForHumans()
+            : 'Cron has not run yet — set up the cPanel cron job to start sending';
+    }
+@endphp
+<div style="display:flex; align-items:center; gap:8px; padding:0.55rem 0.95rem;
+            background:{{ $cronBg }}; border:1px solid {{ $cronBorder }}; color:{{ $cronColor }};
+            border-radius:9px; font-size:0.82rem; font-weight:600; margin-bottom:1rem;">
+    <span style="font-size:1rem;">{{ $cronIcon }}</span>
+    <span>{{ $cronText }}</span>
+    @if(!$cronOk)
+        <span style="color:{{ $cronColor }}; font-weight:400; margin-left:auto;">
+            Add to cPanel cron:
+            <code style="background:rgba(0,0,0,0.05); padding:1px 5px; border-radius:3px; font-size:0.75rem;">
+                * * * * * cd ~/public_html && /usr/bin/php artisan schedule:run >/dev/null 2>&1
+            </code>
+        </span>
+    @endif
+</div>
+
 @if(session('success'))
 <div class="alert-success" style="margin-bottom:1rem;">
     <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
