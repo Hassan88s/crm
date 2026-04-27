@@ -29,6 +29,7 @@ class SpeakerController extends Controller
         $events  = Event::orderBy('name')->get();
         $eventId = $request->get('event_id');
         $search  = $request->get('search');
+        $missing = $request->get('missing'); // e.g. "title", "company", "email", "country", "seniority", "linkedin_url"
 
         $query = Speaker::with('event')->latest();
 
@@ -47,9 +48,17 @@ class SpeakerController extends Controller
             });
         }
 
+        // Filter rows where the chosen field is empty (NULL or blank string)
+        $allowedMissing = ['title', 'company', 'email', 'country', 'seniority', 'linkedin_url'];
+        if (in_array($missing, $allowedMissing, true)) {
+            $query->where(function ($q) use ($missing) {
+                $q->whereNull($missing)->orWhere($missing, '');
+            });
+        }
+
         $speakers = $query->paginate(50)->withQueryString();
 
-        return view('admin.speakers.index', compact('speakers', 'events', 'eventId', 'search'));
+        return view('admin.speakers.index', compact('speakers', 'events', 'eventId', 'search', 'missing'));
     }
 
     public function create()
@@ -145,6 +154,21 @@ class SpeakerController extends Controller
 
         return redirect()->route('admin.speakers.index')
             ->with('success', 'All speakers deleted successfully.');
+    }
+
+    public function destroyByEvent(Event $event)
+    {
+        // Delete photos first
+        Speaker::where('event_id', $event->id)
+            ->whereNotNull('photo')
+            ->each(function ($s) {
+                Storage::disk('public')->delete($s->photo);
+            });
+
+        $deleted = Speaker::where('event_id', $event->id)->delete();
+
+        return redirect()->route('admin.speakers.index')
+            ->with('success', "Deleted {$deleted} speaker(s) from event \"{$event->name}\".");
     }
 
     public function importForm()

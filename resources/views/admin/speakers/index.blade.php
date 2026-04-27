@@ -133,7 +133,20 @@
             @endif
         </p>
     </div>
-    <div style="display:flex; gap:0.6rem;">
+    <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+        @php $eventForDelete = $eventId ? $events->find($eventId) : null; @endphp
+        @if($eventForDelete)
+        <form action="{{ route('admin.speakers.destroyByEvent', $eventForDelete) }}" method="POST"
+              onsubmit="return confirm('Delete all speakers in event \&quot;{{ addslashes($eventForDelete->name) }}\&quot;? This cannot be undone.')">
+            @csrf @method('DELETE')
+            <button type="submit" class="btn" style="font-size:0.85rem; background:#f59e0b;">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+                Delete from Event
+            </button>
+        </form>
+        @endif
         @if($speakers->total() > 0)
         <form action="{{ route('admin.speakers.destroyAll') }}" method="POST"
               onsubmit="return confirm('Delete ALL {{ $speakers->total() }} speakers? This cannot be undone.')">
@@ -193,12 +206,26 @@
                     </option>
                 @endforeach
             </select>
-            @if($eventId || $search)
-                <a href="{{ route('admin.speakers.index') }}"
-                   style="font-size:0.78rem; color:#64748b; text-decoration:none; white-space:nowrap; padding:0.4rem 0.5rem;">
-                   ✕ Clear
-                </a>
-            @endif
+        @endif
+
+        {{-- Missing-field filter --}}
+        <select name="missing" onchange="document.getElementById('search-form').submit()"
+                title="Filter speakers missing a specific field"
+                style="padding:0.5rem 0.75rem; border:1.5px solid #e2e8f0; border-radius:8px; font-size:0.875rem; outline:none; color:#0f172a; background:#fff; font-family:inherit; cursor:pointer;">
+            <option value="">All speakers</option>
+            <option value="title"        {{ ($missing ?? '') === 'title'        ? 'selected' : '' }}>Missing: Title</option>
+            <option value="company"      {{ ($missing ?? '') === 'company'      ? 'selected' : '' }}>Missing: Company</option>
+            <option value="email"        {{ ($missing ?? '') === 'email'        ? 'selected' : '' }}>Missing: Email</option>
+            <option value="country"      {{ ($missing ?? '') === 'country'      ? 'selected' : '' }}>Missing: Country</option>
+            <option value="seniority"    {{ ($missing ?? '') === 'seniority'    ? 'selected' : '' }}>Missing: Seniority</option>
+            <option value="linkedin_url" {{ ($missing ?? '') === 'linkedin_url' ? 'selected' : '' }}>Missing: LinkedIn URL</option>
+        </select>
+
+        @if($eventId || $search || !empty($missing))
+            <a href="{{ route('admin.speakers.index') }}"
+               style="font-size:0.78rem; color:#64748b; text-decoration:none; white-space:nowrap; padding:0.4rem 0.5rem;">
+               ✕ Clear
+            </a>
         @endif
         </form>
     </div>
