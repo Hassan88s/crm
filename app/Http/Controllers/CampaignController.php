@@ -208,14 +208,45 @@ HTML;
             $bodyHtml = $sender->replaceVars($ai['body_html'], $speaker, $ai['topic'], $campaign);
 
             return response()->json([
-                'ok'        => true,
-                'topic'     => $ai['topic'],
-                'subject'   => $subject,
-                'body_html' => $bodyHtml,
+                'ok'             => true,
+                'source'         => 'fresh',
+                'topic'          => $ai['topic'],
+                'subject'        => $subject,
+                'body_html'      => $bodyHtml,
+                'research_notes' => $ai['research_notes'] ?? '',
             ]);
         } catch (\Throwable $e) {
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Return the actual saved email for a recipient (for already-sent ones)
+     * or, if not yet generated, fall back to a fresh preview.
+     */
+    public function recipientEmail(Campaign $campaign, CampaignRecipient $recipient)
+    {
+        if ($recipient->campaign_id !== $campaign->id) {
+            return response()->json(['ok' => false, 'error' => 'Recipient does not belong to this campaign'], 404);
+        }
+
+        if ($recipient->generated_body) {
+            return response()->json([
+                'ok'        => true,
+                'source'    => 'saved',
+                'topic'     => $recipient->ai_topic,
+                'subject'   => $recipient->generated_subject,
+                'body_html' => $recipient->generated_body,
+                'sent_at'   => $recipient->sent_at?->toIso8601String(),
+            ]);
+        }
+
+        // Not yet generated — produce a fresh preview
+        $recipient->loadMissing('speaker');
+        if (!$recipient->speaker) {
+            return response()->json(['ok' => false, 'error' => 'Speaker missing'], 404);
+        }
+        return $this->previewRecipient(request(), $campaign, $recipient->speaker);
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────

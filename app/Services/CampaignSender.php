@@ -158,34 +158,76 @@ class CampaignSender
         $subjectTpl   = $campaign->subject_template;
 
         $prompt = <<<PROMPT
-You are crafting a personalised speaker invitation email.
+You are crafting a UNIQUE, deeply personalised speaker invitation email.
+This must NOT be a fill-in-the-blanks of the template — every speaker
+gets a freshly written body that demonstrates real research about them.
 
 EVENT CONTEXT:
 {$eventBlock}
 RSVP deadline: {$deadline}
 
-SPEAKER PROFILE:
+SPEAKER PROFILE (starting facts only — research deeper online):
 {$profile}
 
-TASKS:
-1. Read the attached PDF (the event agenda) using file_search.
-2. Use web_search to research the speaker's recent thought leadership, talks, or articles.
-3. Pick ONE topic from the agenda that best matches the speaker's expertise.
-4. Take the user's body template below and polish it lightly:
-   - Replace the placeholder reference to a topic with the chosen agenda topic in quotes.
-   - Replace {first_name} with the speaker's first name.
-   - Replace {deadline_date} with: {$deadline}.
-   - Keep the overall structure, tone, and length.
-   - Do NOT invent facts about the speaker; reference them generically (e.g. "your work and thought leadership").
+═══════════════════════════════════════════════════════════
+PHASE 1 — READ THE AGENDA (attached PDF)
+- Extract every session title, panel, keynote, theme, and track from the PDF.
+- Note the topics, speakers' style, and any sub-topics.
 
-USER SUBJECT TEMPLATE:
-{$subjectTpl}
+PHASE 2 — DEEP RESEARCH ON THE SPEAKER (web_search)
+Run multiple searches to learn about THIS person specifically:
+  • "{$speaker->full_name}" + "{$speaker->company}" + role
+  • "{$speaker->full_name}" recent talks / panels / podcasts / interviews
+  • "{$speaker->full_name}" articles / publications / LinkedIn posts
+  • Any signature topic, framework, or POV they're known for
+  • Their company's recent strategic moves (digital banking, AI, payments, etc.)
+You MUST run at least 2–3 different searches before writing.
 
-USER BODY TEMPLATE (HTML or plain text — preserve formatting):
+PHASE 3 — PICK THE BEST AGENDA TOPIC
+From the agenda, pick the SINGLE session/topic that best matches what you
+learned about this speaker. Justify your choice mentally; don't include
+the justification in the email — just use it to write authentically.
+
+PHASE 4 — WRITE A UNIQUE EMAIL
+Use the user's template (below) ONLY as a structural and tonal reference
+— same length, same overall flow (intro → invitation → topic suggestion →
+event scale → RSVP deadline → close), same warmth and professionalism.
+
+But the actual sentences must be REWRITTEN for this speaker:
+  • Reference 1–2 SPECIFIC things you found about them (a recent talk, an
+    article, a known POV, a company achievement). No generic platitudes
+    like "your impressive work".
+  • Tie those specifics smoothly into why the chosen agenda topic suits them.
+  • Vary sentence structure, opening line, and word choice from the template.
+  • Keep the RSVP deadline ({$deadline}) and event scale (400+ banking pros)
+    facts intact.
+  • Output as clean HTML (<p>, <strong>) — no inline styles.
+  • Length: similar to the template (5–7 short paragraphs).
+  • Do NOT make up facts. If web_search returns nothing concrete, fall back
+    to gently referencing their role and company sector — but rephrase
+    every sentence in your own words; do NOT copy the template verbatim.
+
+PHASE 5 — SUBJECT LINE
+Write a personalised subject line. It should NOT be the literal
+template — make it specific to the speaker and the topic. Keep it
+under 80 characters.
+
+═══════════════════════════════════════════════════════════
+USER TEMPLATE (style/structure reference ONLY — rewrite, don't copy):
+
+Subject reference: {$subjectTpl}
+
+Body reference (HTML):
 {$userTemplate}
 
-OUTPUT — return ONLY valid JSON, no markdown, no commentary:
-{"topic": "<chosen agenda topic>", "subject": "<final subject line>", "body_html": "<final email body as HTML>"}
+═══════════════════════════════════════════════════════════
+OUTPUT — return ONLY valid JSON, no markdown fences, no commentary:
+{
+  "topic": "<chosen agenda session/topic title>",
+  "research_notes": "<1–2 sentence summary of what you found about the speaker, used internally>",
+  "subject": "<personalised subject line>",
+  "body_html": "<freshly written HTML email body for this speaker>"
+}
 PROMPT;
 
         // Build input — if an agenda PDF was uploaded, include it inline as an input_file
@@ -205,11 +247,11 @@ PROMPT;
         $payload = [
             'model'             => 'gpt-5.4',
             'input'             => $input,
-            'instructions'      => 'You write personalised speaker invitations. Read the attached agenda PDF (provided in the input), research the speaker on the web, choose the best matching topic from the agenda, then polish the provided template. Return JSON only.',
+            'instructions'      => 'You write fully bespoke speaker invitations. Read the attached agenda PDF, run multiple web searches to learn about the speaker, pick the best matching agenda topic, then write a unique email body that references real specifics about the speaker. Use the user template only as a structural/tonal guide — REWRITE the sentences. Never copy the template verbatim. Return JSON only.',
             'tools'             => [
                 ['type' => 'web_search_preview', 'search_context_size' => 'high'],
             ],
-            'max_output_tokens' => 1500,
+            'max_output_tokens' => 2200,
         ];
 
         $ch = curl_init('https://api.openai.com/v1/responses');
@@ -261,16 +303,18 @@ PROMPT;
             ]);
             // Fallback: use the raw template
             return [
-                'topic'     => 'a topic from the agenda',
-                'subject'   => $subjectTpl,
-                'body_html' => $userTemplate,
+                'topic'           => 'a topic from the agenda',
+                'subject'         => $subjectTpl,
+                'body_html'       => $userTemplate,
+                'research_notes'  => '',
             ];
         }
 
         return [
-            'topic'     => trim($result['topic']     ?? ''),
-            'subject'   => trim($result['subject']   ?? $subjectTpl),
-            'body_html' => $result['body_html'],
+            'topic'           => trim($result['topic']     ?? ''),
+            'subject'         => trim($result['subject']   ?? $subjectTpl),
+            'body_html'       => $result['body_html'],
+            'research_notes'  => trim($result['research_notes'] ?? ''),
         ];
     }
 

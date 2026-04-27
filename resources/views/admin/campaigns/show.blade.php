@@ -32,6 +32,28 @@
     .rec-table { width:100%; border-collapse:collapse; }
     .rec-table th { background:#f8fafc; padding:0.65rem 1rem; font-size:0.7rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.06em; text-align:left; border-bottom:1px solid #e2e8f0; }
     .rec-table td { padding:0.7rem 1rem; font-size:0.84rem; color:#1e293b; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+    .preview-btn { background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; padding:4px 10px; font-size:0.74rem; font-weight:600; color:#2563eb; cursor:pointer; }
+    .preview-btn:hover { background:#eff6ff; border-color:#bfdbfe; }
+    .preview-btn:disabled { opacity:0.5; cursor:wait; }
+
+    /* Modal */
+    .pv-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center; padding:1rem; }
+    .pv-overlay.show { display:flex; }
+    .pv-modal { background:#fff; border-radius:12px; max-width:800px; width:100%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.25); }
+    .pv-head { padding:1rem 1.25rem; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; }
+    .pv-head h3 { font-size:1rem; font-weight:700; color:#0f172a; flex:1; }
+    .pv-close { background:none; border:none; cursor:pointer; font-size:1.4rem; color:#94a3b8; line-height:1; padding:4px 8px; }
+    .pv-close:hover { color:#0f172a; }
+    .pv-meta { padding:0.6rem 1.25rem; background:#f8fafc; border-bottom:1px solid #f1f5f9; font-size:0.78rem; color:#475569; display:flex; flex-direction:column; gap:4px; }
+    .pv-meta strong { color:#0f172a; }
+    .pv-body { padding:1.25rem; overflow-y:auto; line-height:1.55; color:#1e293b; }
+    .pv-body p { margin:0 0 0.75rem; }
+    .pv-loading { text-align:center; padding:2.5rem 1rem; color:#64748b; font-size:0.85rem; }
+    .pv-spin { display:inline-block; width:18px; height:18px; border:3px solid #e2e8f0; border-top-color:#2563eb; border-radius:50%; animation:pvspin 0.8s linear infinite; vertical-align:middle; margin-right:8px; }
+    @keyframes pvspin { to { transform:rotate(360deg); } }
+    .pv-pill { display:inline-flex; align-items:center; gap:4px; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:600; }
+    .pv-pill.fresh { background:#fefce8; color:#a16207; border-color:#fde68a; }
+    .pv-error { color:#dc2626; padding:1rem; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; font-size:0.85rem; }
 </style>
 @if($campaign->status === 'running')
 <meta http-equiv="refresh" content="60">
@@ -125,6 +147,7 @@
                 <th>Sent</th>
                 <th>SMTP</th>
                 <th>Error</th>
+                <th>Preview</th>
             </tr>
         </thead>
         <tbody>
@@ -140,10 +163,93 @@
                 <td style="font-size:0.78rem; color:#16a34a;">{{ $r->sent_at?->diffForHumans() ?? '—' }}</td>
                 <td style="font-size:0.78rem; color:#64748b;">{{ $r->smtpAccount?->name ?? ($r->smtp_account_id ? '#'.$r->smtp_account_id : '—') }}</td>
                 <td style="font-size:0.74rem; color:#dc2626; max-width:220px; overflow:hidden; text-overflow:ellipsis;">{{ $r->error ?: '' }}</td>
+                <td>
+                    <button class="preview-btn"
+                            data-recipient-id="{{ $r->id }}"
+                            data-name="{{ $r->speaker?->full_name }}"
+                            data-status="{{ $r->status }}"
+                            onclick="openPreview(this)">
+                        @if($r->generated_body) View email @else Preview @endif
+                    </button>
+                </td>
             </tr>
             @endforeach
         </tbody>
     </table>
 </div>
+
+{{-- Preview modal --}}
+<div class="pv-overlay" id="pv-overlay" onclick="if(event.target===this) closePreview()">
+    <div class="pv-modal">
+        <div class="pv-head">
+            <h3 id="pv-title">Email Preview</h3>
+            <span id="pv-source"></span>
+            <button class="pv-close" onclick="closePreview()" title="Close">&times;</button>
+        </div>
+        <div class="pv-meta" id="pv-meta" style="display:none;">
+            <div><strong>Subject:</strong> <span id="pv-subject"></span></div>
+            <div><strong>AI Topic:</strong> <span id="pv-topic"></span></div>
+            <div id="pv-research-row" style="display:none;"><strong>Research notes:</strong> <span id="pv-research"></span></div>
+        </div>
+        <div class="pv-body" id="pv-body">
+            <div class="pv-loading"><span class="pv-spin"></span> Loading…</div>
+        </div>
+    </div>
+</div>
+
+<script>
+const CAMPAIGN_ID = {{ $campaign->id }};
+
+function openPreview(btn) {
+    const id = btn.dataset.recipientId;
+    const name = btn.dataset.name || 'Speaker';
+    const status = btn.dataset.status;
+
+    document.getElementById('pv-title').textContent = 'Email for ' + name;
+    document.getElementById('pv-source').innerHTML = '';
+    document.getElementById('pv-meta').style.display = 'none';
+    document.getElementById('pv-body').innerHTML =
+        '<div class="pv-loading"><span class="pv-spin"></span> ' +
+        (status === 'sent' ? 'Loading the sent email…' : 'Generating preview (this may take 30–60s)…') +
+        '</div>';
+    document.getElementById('pv-overlay').classList.add('show');
+
+    fetch(`/admin/emails/${CAMPAIGN_ID}/recipient/${id}/email`, {
+        headers: { 'Accept': 'application/json' },
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (!d.ok) throw new Error(d.error || 'Failed to load');
+        document.getElementById('pv-subject').textContent = d.subject || '(no subject)';
+        document.getElementById('pv-topic').textContent = d.topic || '—';
+        const sourceEl = document.getElementById('pv-source');
+        if (d.source === 'saved') {
+            sourceEl.innerHTML = '<span class="pv-pill">✓ Sent email</span>';
+        } else {
+            sourceEl.innerHTML = '<span class="pv-pill fresh">⚡ Fresh preview</span>';
+        }
+        if (d.research_notes) {
+            document.getElementById('pv-research-row').style.display = '';
+            document.getElementById('pv-research').textContent = d.research_notes;
+        } else {
+            document.getElementById('pv-research-row').style.display = 'none';
+        }
+        document.getElementById('pv-meta').style.display = '';
+        document.getElementById('pv-body').innerHTML = d.body_html || '(empty)';
+    })
+    .catch(e => {
+        document.getElementById('pv-body').innerHTML =
+            '<div class="pv-error">Could not load preview: ' + e.message + '</div>';
+    });
+}
+
+function closePreview() {
+    document.getElementById('pv-overlay').classList.remove('show');
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closePreview();
+});
+</script>
 
 @endsection

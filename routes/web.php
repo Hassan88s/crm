@@ -104,6 +104,7 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::post('emails/{campaign}/resume',    [CampaignController::class, 'resume'])->name('campaigns.resume');
     Route::delete('emails/{campaign}',         [CampaignController::class, 'destroy'])->name('campaigns.destroy');
     Route::post('emails/{campaign}/preview/{speaker}', [CampaignController::class, 'previewRecipient'])->name('campaigns.preview');
+    Route::get('emails/{campaign}/recipient/{recipient}/email', [CampaignController::class, 'recipientEmail'])->name('campaigns.recipientEmail');
 
     // Backward-compatible alias for the old "Send Invites" link/name (some places may still reference it)
     Route::get('emails/legacy/index',          [CampaignController::class, 'index'])->name('emails.index');
