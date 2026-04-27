@@ -12,6 +12,7 @@ use App\Http\Controllers\RequirementsController;
 use App\Http\Controllers\ReplyController;
 use App\Http\Controllers\SmtpAccountController;
 use App\Http\Controllers\ImapAccountController;
+use App\Http\Controllers\CampaignController;
 
 Route::get('/', function () {
     return redirect('/admin/login');
@@ -93,9 +94,19 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::post('settings/password', [SettingsController::class, 'updatePassword'])->name('settings.password');
 
     // Run Emails
-    Route::get('emails', [EmailController::class, 'index'])->name('emails.index');
-    Route::post('emails/send', [EmailController::class, 'send'])->name('emails.send');
-    Route::post('emails/ai-draft', [EmailController::class, 'aiDraft'])->name('emails.ai_draft');
+    // AI-powered Campaigns (replaces the old Send Invites flow)
+    Route::get('emails',                       [CampaignController::class, 'index'])->name('campaigns.index');
+    Route::get('emails/create',                [CampaignController::class, 'create'])->name('campaigns.create');
+    Route::post('emails',                      [CampaignController::class, 'store'])->name('campaigns.store');
+    Route::get('emails/{campaign}',            [CampaignController::class, 'show'])->name('campaigns.show');
+    Route::post('emails/{campaign}/start',     [CampaignController::class, 'start'])->name('campaigns.start');
+    Route::post('emails/{campaign}/pause',     [CampaignController::class, 'pause'])->name('campaigns.pause');
+    Route::post('emails/{campaign}/resume',    [CampaignController::class, 'resume'])->name('campaigns.resume');
+    Route::delete('emails/{campaign}',         [CampaignController::class, 'destroy'])->name('campaigns.destroy');
+    Route::post('emails/{campaign}/preview/{speaker}', [CampaignController::class, 'previewRecipient'])->name('campaigns.preview');
+
+    // Backward-compatible alias for the old "Send Invites" link/name (some places may still reference it)
+    Route::get('emails/legacy/index',          [CampaignController::class, 'index'])->name('emails.index');
 
     // SMTP Accounts
     Route::get('smtp-accounts', [SmtpAccountController::class, 'index'])->name('smtp-accounts.index');
