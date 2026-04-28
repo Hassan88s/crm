@@ -180,6 +180,15 @@
             <textarea name="body_template" id="body-textarea" style="display:none;">{{ old('body_template', $defaultBody) }}</textarea>
             <div id="body-editor"></div>
         </div>
+
+        <div class="form-group" style="margin-top:1rem;">
+            <label class="form-label">Signature (HTML, appended to every email)</label>
+            <p class="hint" style="margin-bottom:0.4rem;">
+                Use <code>{smtp_from_name}</code> — it's replaced at send time with the rotated SMTP account's display name. Tokens like <code>{first_name}</code>, <code>{event_name}</code> also work.
+            </p>
+            <textarea name="signature_template" id="signature-textarea" rows="6" class="form-input"
+                      style="font-family:ui-monospace,Menlo,monospace; font-size:0.82rem;">{{ old('signature_template', $defaultSignature) }}</textarea>
+        </div>
     </div>
 
     {{-- 5. Throttle / start --}}

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Campaign extends Model
 {
     protected $fillable = [
-        'name', 'subject_template', 'body_template',
+        'name', 'subject_template', 'body_template', 'signature_template',
         'agenda_pdf_path', 'agenda_filename', 'openai_file_id',
         'event_id', 'throttle_seconds', 'attach_agenda',
         'status', 'total_count', 'sent_count', 'failed_count',

@@ -63,6 +63,10 @@ class CampaignSender
             // 3) Send
             $fromAddress = config('mail.from.address');
             $fromName    = config('mail.from.name');
+
+            // Append signature using the rotated SMTP's from_name
+            $bodyHtml = $this->appendSignature($bodyHtml, $campaign, $fromName, $fromAddress);
+
             $attachPath  = $campaign->attach_agenda && $campaign->agenda_pdf_path
                 ? storage_path('app' . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $campaign->agenda_pdf_path))
                 : null;
@@ -345,6 +349,30 @@ PROMPT;
             ],
             $text
         );
+    }
+
+    /**
+     * Append the campaign's signature to a body, replacing {smtp_from_name}
+     * and {smtp_from_address} with the rotated SMTP account's from values.
+     * If the campaign has no signature_template, the body is returned unchanged.
+     */
+    public function appendSignature(string $bodyHtml, Campaign $campaign, ?string $fromName, ?string $fromAddress): string
+    {
+        $sig = trim((string) ($campaign->signature_template ?? ''));
+        if ($sig === '') return $bodyHtml;
+
+        $sig = str_replace(
+            ['{smtp_from_name}', '{smtp_from_address}'],
+            [$fromName ?? '', $fromAddress ?? ''],
+            $sig
+        );
+
+        // Avoid double-appending if AI already echoed the signature literally
+        if (mb_stripos($bodyHtml, $sig) !== false) {
+            return $bodyHtml;
+        }
+
+        return rtrim($bodyHtml) . "\n" . $sig;
     }
 
     private function applySmtpConfigFromAccount(SmtpAccount $a): void

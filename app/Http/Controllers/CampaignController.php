@@ -39,6 +39,15 @@ HTML;
 
     public const DEFAULT_SUBJECT_TEMPLATE = "Speaker invitation — {event_name}";
 
+    public const DEFAULT_SIGNATURE_TEMPLATE = <<<'HTML'
+<p style="margin-top:1.2rem;">Warm regards,</p>
+<p style="margin:0; line-height:1.5;">
+<strong>{smtp_from_name}</strong><br>
+Production Manager<br>
+Tel: +420 773 652 384
+</p>
+HTML;
+
     public function index()
     {
         $campaigns   = Campaign::withCount('recipients')->latest()->get();
@@ -105,10 +114,11 @@ HTML;
         $events   = Event::withCount('speakers')->orderBy('name')->get();
         $speakers = Speaker::with('event')->orderBy('first_name')->get();
         return view('admin.campaigns.create', [
-            'events'           => $events,
-            'speakers'         => $speakers,
-            'defaultSubject'   => self::DEFAULT_SUBJECT_TEMPLATE,
-            'defaultBody'      => self::DEFAULT_BODY_TEMPLATE,
+            'events'             => $events,
+            'speakers'           => $speakers,
+            'defaultSubject'     => self::DEFAULT_SUBJECT_TEMPLATE,
+            'defaultBody'        => self::DEFAULT_BODY_TEMPLATE,
+            'defaultSignature'   => self::DEFAULT_SIGNATURE_TEMPLATE,
             'preselectedEventId' => $request->get('event_id'),
         ]);
     }
@@ -117,14 +127,15 @@ HTML;
     {
         $byEvent = $request->filled('event_id');
         $rules = [
-            'name'             => 'required|string|max:120',
-            'subject_template' => 'required|string|max:255',
-            'body_template'    => 'required|string',
-            'agenda_pdf'       => 'nullable|file|mimes:pdf|max:20480',
-            'attach_agenda'    => 'nullable|in:0,1',
-            'throttle_seconds' => 'required|integer|min:30|max:3600',
-            'event_id'         => 'nullable|exists:events,id',
-            'start_now'        => 'nullable|in:0,1',
+            'name'               => 'required|string|max:120',
+            'subject_template'   => 'required|string|max:255',
+            'body_template'      => 'required|string',
+            'signature_template' => 'nullable|string',
+            'agenda_pdf'         => 'nullable|file|mimes:pdf|max:20480',
+            'attach_agenda'      => 'nullable|in:0,1',
+            'throttle_seconds'   => 'required|integer|min:30|max:3600',
+            'event_id'           => 'nullable|exists:events,id',
+            'start_now'          => 'nullable|in:0,1',
         ];
         $rules = array_merge($rules, $byEvent
             ? []
@@ -166,17 +177,18 @@ HTML;
         }
 
         $campaign = Campaign::create([
-            'name'             => $data['name'],
-            'subject_template' => $data['subject_template'],
-            'body_template'    => $data['body_template'],
-            'agenda_pdf_path'  => $pdfPath,
-            'agenda_filename'  => $pdfFilename,
-            'openai_file_id'   => $openaiFileId,
-            'event_id'         => $eventId,
-            'throttle_seconds' => (int) $data['throttle_seconds'],
-            'attach_agenda'    => $request->boolean('attach_agenda', true),
-            'status'           => 'draft',
-            'total_count'      => count($speakerIds),
+            'name'               => $data['name'],
+            'subject_template'   => $data['subject_template'],
+            'body_template'      => $data['body_template'],
+            'signature_template' => $data['signature_template'] ?? self::DEFAULT_SIGNATURE_TEMPLATE,
+            'agenda_pdf_path'    => $pdfPath,
+            'agenda_filename'    => $pdfFilename,
+            'openai_file_id'     => $openaiFileId,
+            'event_id'           => $eventId,
+            'throttle_seconds'   => (int) $data['throttle_seconds'],
+            'attach_agenda'      => $request->boolean('attach_agenda', false),
+            'status'             => 'draft',
+            'total_count'        => count($speakerIds),
         ]);
 
         // Create recipient rows
@@ -263,6 +275,14 @@ HTML;
             $ai = $sender->generateEmail($campaign, $speaker);
             $subject = $sender->replaceVars($ai['subject'], $speaker, $ai['topic'], $campaign);
             $bodyHtml = $sender->replaceVars($ai['body_html'], $speaker, $ai['topic'], $campaign);
+
+            // Peek at the next active SMTP just for the preview (don't consume a rotation slot)
+            $smtp = \App\Models\SmtpAccount::active()
+                ->orderByRaw('last_used_at IS NULL DESC, last_used_at ASC')
+                ->first();
+            $fromName    = $smtp?->from_name    ?? config('mail.from.name', '');
+            $fromAddress = $smtp?->from_address ?? config('mail.from.address', '');
+            $bodyHtml = $sender->appendSignature($bodyHtml, $campaign, $fromName, $fromAddress);
 
             return response()->json([
                 'ok'             => true,
