@@ -240,4 +240,31 @@ class ReplyController extends Controller
             return back()->with('reply_error', 'Failed to send reply: ' . $e->getMessage());
         }
     }
+
+    // ── Delete one ─────────────────────────────────────────────────────────
+
+    public function destroy(EmailReply $reply)
+    {
+        $reply->delete();
+        return redirect()->route('admin.replies.index')
+            ->with('success', 'Reply deleted.');
+    }
+
+    // ── Delete all (optionally scoped to a category) ───────────────────────
+
+    public function destroyAll(Request $request)
+    {
+        $category = $request->input('category');
+        $allowed  = ['Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply'];
+
+        if ($category && in_array($category, $allowed, true)) {
+            $count = EmailReply::where('category', $category)->delete();
+            return redirect()->route('admin.replies.index', ['category' => $category])
+                ->with('success', "Deleted {$count} reply(ies) in category \"{$category}\".");
+        }
+
+        $count = EmailReply::query()->delete();
+        return redirect()->route('admin.replies.index')
+            ->with('success', "Deleted {$count} reply(ies).");
+    }
 }

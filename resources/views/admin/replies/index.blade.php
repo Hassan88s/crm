@@ -296,13 +296,38 @@
         <p>AI-classified email replies from your speaker outreach</p>
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-        <button id="fetchBtn" onclick="fetchAndClassify()">
-            <div class="spinner" id="btnSpinner"></div>
-            <svg id="btnIcon" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-            </svg>
-            Fetch &amp; Classify Now
-        </button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <button id="fetchBtn" onclick="fetchAndClassify()">
+                <div class="spinner" id="btnSpinner"></div>
+                <svg id="btnIcon" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Fetch &amp; Classify Now
+            </button>
+
+            @if(($counts['all'] ?? 0) > 0)
+                @php
+                    $delScope    = $category !== 'all' ? $category : null;
+                    $delCount    = $delScope ? ($counts[$delScope] ?? 0) : ($counts['all'] ?? 0);
+                    $delLabel    = $delScope ? "Delete \"{$delScope}\" ({$delCount})" : "Delete All ({$delCount})";
+                    $confirmText = $delScope
+                        ? "Delete all {$delCount} reply(ies) in \"{$delScope}\"? This cannot be undone."
+                        : "Delete ALL {$delCount} replies? This cannot be undone.";
+                @endphp
+                <form action="{{ route('admin.replies.destroyAll') }}" method="POST"
+                      onsubmit="return confirm('{{ addslashes($confirmText) }}');" style="margin:0;">
+                    @csrf @method('DELETE')
+                    @if($delScope)
+                        <input type="hidden" name="category" value="{{ $delScope }}">
+                    @endif
+                    <button type="submit"
+                            style="display:inline-flex; align-items:center; gap:6px; background:#ef4444; color:#fff; border:none; padding:0.6rem 1.1rem; border-radius:9px; font-size:0.85rem; font-weight:700; cursor:pointer;">
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        {{ $delLabel }}
+                    </button>
+                </form>
+            @endif
+        </div>
         <div id="fetchStatus">
             @if($lastFetch)
                 Last fetch: {{ \Carbon\Carbon::parse($lastFetch)->diffForHumans() }}
@@ -469,13 +494,17 @@
                         </td>
 
                         {{-- Actions --}}
-                        <td>
-                            {{-- <button class="reclassify-btn"
-                                    id="reclassify-{{ $reply->id }}"
-                                    onclick="event.stopPropagation(); reclassify({{ $reply->id }}, '{{ route('admin.replies.reclassify', $reply) }}')"
-                                    title="Re-run AI classification">
-                                ↻ Reclassify
-                            </button> --}}
+                        <td onclick="event.stopPropagation();" style="white-space:nowrap;">
+                            <form action="{{ route('admin.replies.destroy', $reply) }}" method="POST"
+                                  onsubmit="event.stopPropagation(); return confirm('Delete this reply from {{ addslashes($reply->from_email) }}?');"
+                                  style="display:inline; margin:0;">
+                                @csrf @method('DELETE')
+                                <button type="submit"
+                                        title="Delete this reply"
+                                        style="background:none; border:1px solid #fecaca; color:#dc2626; border-radius:6px; padding:4px 9px; font-size:0.74rem; font-weight:600; cursor:pointer;">
+                                    Delete
+                                </button>
+                            </form>
                         </td>
                     </tr>
                     @endforeach
