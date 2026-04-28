@@ -73,6 +73,64 @@
         word-break: break-word;
     }
 
+    /* ── Thread (full conversation) ── */
+    .thread-wrap { padding: 0; border-top: 1px solid #e2e8f0; }
+    .thread-bar {
+        padding: 0.7rem 1.25rem;
+        background: #f8fafc;
+        font-size: 0.75rem;
+        color: #64748b;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .thread-list { padding: 1rem 1.25rem 0.5rem; display: flex; flex-direction: column; gap: 0.85rem; }
+    .msg {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        overflow: hidden;
+        background: #fff;
+    }
+    .msg.outbound { background: #fafbff; border-color: #dbeafe; margin-left: 2.5rem; }
+    .msg.inbound  { background: #fff;    border-color: #e2e8f0; margin-right: 2.5rem; }
+    .msg-head {
+        display: flex; align-items: center; gap: 10px; padding: 0.7rem 1rem;
+        background: rgba(248,250,252,0.6); border-bottom: 1px solid #f1f5f9;
+        cursor: pointer; user-select: none;
+    }
+    .msg-head:hover { background: #f1f5f9; }
+    .msg-dot {
+        width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.78rem; font-weight: 700; color: #fff;
+    }
+    .msg.outbound .msg-dot { background: #2563eb; }
+    .msg.inbound  .msg-dot { background: #16a34a; }
+    .msg-info { flex: 1; min-width: 0; }
+    .msg-from { font-size: 0.85rem; font-weight: 600; color: #0f172a; line-height: 1.2; }
+    .msg-meta { font-size: 0.74rem; color: #94a3b8; margin-top: 1px; }
+    .msg-time { font-size: 0.74rem; color: #94a3b8; flex-shrink: 0; }
+    .msg-pill {
+        font-size: 0.66rem; padding: 1px 7px; border-radius: 999px;
+        font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .msg.outbound .msg-pill { background: #dbeafe; color: #1d4ed8; }
+    .msg.inbound  .msg-pill { background: #dcfce7; color: #16a34a; }
+    .msg-body {
+        padding: 0.85rem 1rem;
+        font-size: 0.88rem;
+        color: #1e293b;
+        line-height: 1.65;
+        word-break: break-word;
+    }
+    .msg-body.collapsed { display: none; }
+    .msg-body.plain { white-space: pre-wrap; }
+    .msg-subject { font-size: 0.8rem; color: #475569; font-style: italic; margin-bottom: 0.5rem; padding-bottom: 0.4rem; border-bottom: 1px dashed #e2e8f0; }
+
     /* ── Sidebar cards ── */
     .side-card {
         background: #fff;
@@ -312,12 +370,68 @@
             </div>
         </div>
 
-        {{-- Body --}}
-        <div class="email-body-wrap">
-            @if(trim($reply->body_plain))
-                <div class="email-body">{{ $reply->body_plain }}</div>
+        {{-- Body — full conversation thread --}}
+        @php
+            $thread = $thread ?? collect();
+            $latestId = optional($thread->last())->id;
+        @endphp
+
+        <div class="thread-wrap">
+            <div class="thread-bar">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                </svg>
+                Conversation ({{ $thread->count() }} message{{ $thread->count() === 1 ? '' : 's' }})
+            </div>
+
+            @if($thread->isEmpty())
+                <div style="padding:2rem 1.25rem; color:#94a3b8; font-style:italic; font-size:0.875rem;">
+                    No messages exchanged yet.
+                </div>
             @else
-                <p style="color:#94a3b8; font-style:italic; font-size:0.875rem;">No message body available.</p>
+                <div class="thread-list">
+                    @foreach($thread as $i => $msg)
+                        @php
+                            $expanded = ($msg->id === $latestId);
+                            $personName = $msg->direction === 'inbound'
+                                ? ($msg->from_name ?? $msg->from_email)
+                                : ($msg->to_name ?? $msg->to_email);
+                            $personEmail = $msg->direction === 'inbound' ? $msg->from_email : $msg->to_email;
+                            $initial = mb_strtoupper(mb_substr($personName, 0, 1));
+                        @endphp
+                        <div class="msg {{ $msg->direction }}">
+                            <div class="msg-head" onclick="toggleMsg(this)">
+                                <div class="msg-dot">{{ $initial }}</div>
+                                <div class="msg-info">
+                                    <div class="msg-from">{{ $personName }}</div>
+                                    <div class="msg-meta">
+                                        @if($msg->direction === 'inbound')
+                                            From {{ $msg->from_email }}
+                                            @if(!empty($msg->category)) · {{ $msg->category }} @endif
+                                        @else
+                                            To {{ $msg->to_email }}
+                                            @if(!empty($msg->smtp_account)) · via {{ $msg->smtp_account }} @endif
+                                        @endif
+                                    </div>
+                                </div>
+                                <span class="msg-pill">{{ $msg->direction === 'inbound' ? 'Received' : 'Sent' }}</span>
+                                <span class="msg-time" title="{{ $msg->at?->format('Y-m-d H:i') }}">
+                                    {{ $msg->at?->diffForHumans() }}
+                                </span>
+                            </div>
+                            <div class="msg-body {{ $msg->is_html ? '' : 'plain' }} {{ $expanded ? '' : 'collapsed' }}">
+                                @if(!empty($msg->subject))
+                                    <div class="msg-subject"><strong>Subject:</strong> {{ $msg->subject }}</div>
+                                @endif
+                                @if($msg->is_html)
+                                    {!! $msg->body !!}
+                                @else
+                                    {{ $msg->body }}
+                                @endif
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
             @endif
         </div>
     </div>
@@ -666,5 +780,13 @@ document.addEventListener('DOMContentLoaded', function() {
     initEditor();
 });
 @endif
+
+// ── Thread message expand/collapse ───────────────────────────────────
+function toggleMsg(headEl) {
+    const body = headEl.nextElementSibling;
+    if (body && body.classList.contains('msg-body')) {
+        body.classList.toggle('collapsed');
+    }
+}
 </script>
 @endsection

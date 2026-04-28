@@ -37,7 +37,56 @@ class ReplyController extends Controller
     public function show(EmailReply $reply)
     {
         $reply->load('speaker');
-        return view('admin.replies.show', compact('reply'));
+
+        // Build the full conversation between us and this contact.
+        // Inbound = email_replies (any except 'No Reply' placeholders)
+        // Outbound = email_logs sent successfully
+        $email = strtolower($reply->from_email);
+
+        $inbound = EmailReply::whereRaw('LOWER(from_email) = ?', [$email])
+            ->where('category', '!=', 'No Reply')
+            ->orderBy('received_at')
+            ->get()
+            ->map(fn($r) => (object) [
+                'direction' => 'inbound',
+                'id'        => 'in-' . $r->id,
+                'subject'   => $r->subject,
+                'body'      => $r->body_plain,
+                'is_html'   => false,
+                'from_name' => $r->from_name ?: $r->from_email,
+                'from_email'=> $r->from_email,
+                'at'        => $r->received_at,
+                'category'  => $r->category,
+                'reply_ref' => $r,
+            ]);
+
+        $outbound = EmailLog::whereRaw('LOWER(to_email) = ?', [$email])
+            ->where('status', 'sent')
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn($l) => (object) [
+                'direction'   => 'outbound',
+                'id'          => 'out-' . $l->id,
+                'subject'     => $l->subject,
+                'body'        => $l->body,
+                'is_html'     => $this->looksLikeHtml($l->body),
+                'to_name'     => $l->to_name,
+                'to_email'    => $l->to_email,
+                'at'          => $l->created_at,
+                'smtp_account'=> $l->smtpAccount?->name ?? ($l->smtp_account_id ? '#'.$l->smtp_account_id : null),
+            ]);
+
+        $thread = $inbound->concat($outbound)
+            ->sortBy(fn($m) => $m->at?->timestamp ?? 0)
+            ->values();
+
+        return view('admin.replies.show', compact('reply', 'thread'));
+    }
+
+    private function looksLikeHtml(?string $s): bool
+    {
+        if (!$s) return false;
+        return (bool) preg_match('/<\s*(p|br|div|table|ul|ol|li|strong|em|a|h[1-6])\b/i', $s);
     }
 
     public function fetch()
