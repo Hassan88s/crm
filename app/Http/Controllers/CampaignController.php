@@ -210,10 +210,33 @@ HTML;
             ->with('success', 'Campaign saved as draft.');
     }
 
-    public function show(Campaign $campaign)
+    public function show(Request $request, Campaign $campaign)
     {
-        $campaign->load(['recipients.speaker', 'recipients.smtpAccount', 'event']);
-        return view('admin.campaigns.show', compact('campaign'));
+        $campaign->load('event');
+
+        $statusFilter = $request->get('status');
+        $allowed = ['pending', 'processing', 'sent', 'failed', 'skipped'];
+
+        $query = $campaign->recipients()
+            ->with(['speaker', 'smtpAccount'])
+            ->orderByRaw("FIELD(status, 'processing','pending','failed','skipped','sent')")
+            ->orderBy('scheduled_at')
+            ->orderBy('id');
+
+        if (in_array($statusFilter, $allowed, true)) {
+            $query->where('status', $statusFilter);
+        }
+
+        $recipients = $query->paginate(50)->withQueryString();
+
+        // Status counts (independent of current filter, for the filter pills)
+        $statusCounts = $campaign->recipients()
+            ->selectRaw('status, COUNT(*) as c')
+            ->groupBy('status')
+            ->pluck('c', 'status')
+            ->toArray();
+
+        return view('admin.campaigns.show', compact('campaign', 'recipients', 'statusFilter', 'statusCounts'));
     }
 
     public function start(Campaign $campaign)

@@ -149,8 +149,37 @@
 </div>
 
 <div class="recipients-card">
-    <div style="padding:0.85rem 1.1rem; border-bottom:1px solid #e2e8f0; font-size:0.9rem; font-weight:700; color:#0f172a;">
-        Recipients
+    <div style="padding:0.85rem 1.1rem; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+        <span style="font-size:0.9rem; font-weight:700; color:#0f172a; margin-right:auto;">
+            Recipients
+            <span style="font-size:0.78rem; font-weight:500; color:#94a3b8; margin-left:6px;">
+                ({{ $recipients->total() }} total)
+            </span>
+        </span>
+
+        @php
+            $tabs = [
+                ''           => ['All',         null,        $campaign->total_count],
+                'pending'    => ['Pending',     '#94a3b8',  (int)($statusCounts['pending']    ?? 0)],
+                'processing' => ['Processing',  '#1d4ed8',  (int)($statusCounts['processing'] ?? 0)],
+                'sent'       => ['Sent',        '#16a34a',  (int)($statusCounts['sent']       ?? 0)],
+                'failed'     => ['Failed',      '#dc2626',  (int)($statusCounts['failed']     ?? 0)],
+                'skipped'    => ['Skipped',     '#a16207',  (int)($statusCounts['skipped']    ?? 0)],
+            ];
+        @endphp
+        @foreach($tabs as $key => [$label, $color, $count])
+            @php $isActive = ($statusFilter ?? '') === $key; @endphp
+            <a href="{{ route('admin.campaigns.show', $campaign) }}{{ $key ? '?status='.$key : '' }}"
+               style="display:inline-flex; align-items:center; gap:5px;
+                      padding:3px 10px; border-radius:999px;
+                      font-size:0.72rem; font-weight:700; text-decoration:none;
+                      border:1.5px solid {{ $isActive ? ($color ?? '#2563eb') : '#e2e8f0' }};
+                      background:{{ $isActive ? ($color ?? '#2563eb').'14' : '#fff' }};
+                      color:{{ $isActive ? ($color ?? '#2563eb') : '#64748b' }};">
+                {{ $label }}
+                <span style="background:{{ $isActive ? ($color ?? '#2563eb').'33' : '#f1f5f9' }}; padding:0 6px; border-radius:999px; font-size:0.68rem;">{{ $count }}</span>
+            </a>
+        @endforeach
     </div>
     <table class="rec-table">
         <thead>
@@ -166,7 +195,7 @@
             </tr>
         </thead>
         <tbody>
-            @foreach($campaign->recipients as $r)
+            @forelse($recipients as $r)
             <tr>
                 <td>
                     <strong>{{ $r->speaker?->full_name ?? '(deleted)' }}</strong>
@@ -188,9 +217,59 @@
                     </button>
                 </td>
             </tr>
-            @endforeach
+            @empty
+            <tr>
+                <td colspan="8" style="padding:2rem 1rem; text-align:center; color:#94a3b8; font-size:0.85rem;">
+                    No recipients @if($statusFilter) with status "{{ $statusFilter }}" @endif.
+                </td>
+            </tr>
+            @endforelse
         </tbody>
     </table>
+
+    {{-- Pagination --}}
+    @if($recipients->hasPages())
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:0.85rem 1.1rem; border-top:1px solid #e2e8f0; font-size:0.8rem; color:#64748b; flex-wrap:wrap; gap:0.75rem;">
+            <div>
+                Showing {{ $recipients->firstItem() }}–{{ $recipients->lastItem() }} of {{ $recipients->total() }}
+            </div>
+            <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                @if($recipients->onFirstPage())
+                    <span style="display:inline-flex; align-items:center; justify-content:center; min-width:30px; height:30px; padding:0 8px; border-radius:6px; border:1px solid #e2e8f0; color:#cbd5e1; font-size:0.8rem; font-weight:600;">‹</span>
+                @else
+                    <a href="{{ $recipients->previousPageUrl() }}" style="display:inline-flex; align-items:center; justify-content:center; min-width:30px; height:30px; padding:0 8px; border-radius:6px; border:1px solid #e2e8f0; color:#475569; font-size:0.8rem; font-weight:600; text-decoration:none;">‹</a>
+                @endif
+
+                @php
+                    $current = $recipients->currentPage();
+                    $last    = $recipients->lastPage();
+                    $start   = max(1, $current - 2);
+                    $end     = min($last, $current + 2);
+                @endphp
+                @if($start > 1)
+                    <a href="{{ $recipients->url(1) }}" style="display:inline-flex; align-items:center; justify-content:center; min-width:30px; height:30px; padding:0 8px; border-radius:6px; border:1px solid #e2e8f0; color:#475569; font-size:0.8rem; font-weight:600; text-decoration:none;">1</a>
+                    @if($start > 2) <span style="padding:0 4px; color:#94a3b8;">…</span> @endif
+                @endif
+                @for($p = $start; $p <= $end; $p++)
+                    @if($p === $current)
+                        <span style="display:inline-flex; align-items:center; justify-content:center; min-width:30px; height:30px; padding:0 8px; border-radius:6px; background:#2563eb; color:#fff; font-size:0.8rem; font-weight:700;">{{ $p }}</span>
+                    @else
+                        <a href="{{ $recipients->url($p) }}" style="display:inline-flex; align-items:center; justify-content:center; min-width:30px; height:30px; padding:0 8px; border-radius:6px; border:1px solid #e2e8f0; color:#475569; font-size:0.8rem; font-weight:600; text-decoration:none;">{{ $p }}</a>
+                    @endif
+                @endfor
+                @if($end < $last)
+                    @if($end < $last - 1) <span style="padding:0 4px; color:#94a3b8;">…</span> @endif
+                    <a href="{{ $recipients->url($last) }}" style="display:inline-flex; align-items:center; justify-content:center; min-width:30px; height:30px; padding:0 8px; border-radius:6px; border:1px solid #e2e8f0; color:#475569; font-size:0.8rem; font-weight:600; text-decoration:none;">{{ $last }}</a>
+                @endif
+
+                @if($recipients->hasMorePages())
+                    <a href="{{ $recipients->nextPageUrl() }}" style="display:inline-flex; align-items:center; justify-content:center; min-width:30px; height:30px; padding:0 8px; border-radius:6px; border:1px solid #e2e8f0; color:#475569; font-size:0.8rem; font-weight:600; text-decoration:none;">›</a>
+                @else
+                    <span style="display:inline-flex; align-items:center; justify-content:center; min-width:30px; height:30px; padding:0 8px; border-radius:6px; border:1px solid #e2e8f0; color:#cbd5e1; font-size:0.8rem; font-weight:600;">›</span>
+                @endif
+            </div>
+        </div>
+    @endif
 </div>
 
 {{-- Preview modal --}}
