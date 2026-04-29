@@ -646,9 +646,7 @@ class InboxController extends Controller
                     }
                 }
             }
-            if ($charset !== 'UTF-8') {
-                $decoded = @mb_convert_encoding($decoded, 'UTF-8', $charset) ?: $decoded;
-            }
+            $decoded = \App\Support\Charset::toUtf8($decoded, $charset);
 
             if ($type === 'html') {
                 $html = $decoded;

@@ -240,7 +240,7 @@ class ClassifyEmailReplies extends Command
                     if (strtolower($p->attribute) === 'charset') { $charset = strtoupper($p->value); break; }
                 }
             }
-            if ($charset !== 'UTF-8') $decoded = @mb_convert_encoding($decoded, 'UTF-8', $charset) ?: $decoded;
+            $decoded = \App\Support\Charset::toUtf8($decoded, $charset);
             if ($type === 'plain' && !$plain) $plain = $decoded;
             if ($type === 'html'  && !$html)  $html  = $decoded;
         }
