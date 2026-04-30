@@ -33,6 +33,7 @@ class EmailReply extends Model
             'Negative'       => '#9f1239',
             'No Reply'       => '#f97316',
             'Bounced'        => '#7c3aed',
+            'Confirmed'      => '#0891b2',
             default          => '#94a3b8',
         };
     }
@@ -48,6 +49,7 @@ class EmailReply extends Model
             'Negative'       => '#fff1f2',
             'No Reply'       => '#fff7ed',
             'Bounced'        => '#f5f3ff',
+            'Confirmed'      => '#ecfeff',
             default          => '#f1f5f9',
         };
     }
@@ -63,6 +65,7 @@ class EmailReply extends Model
             'Negative'       => '🚫',
             'No Reply'       => '🟠',
             'Bounced'        => '↩️',
+            'Confirmed'      => '✅',
             default          => '⚪',
         };
     }

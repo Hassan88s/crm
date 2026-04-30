@@ -570,6 +570,26 @@
                     <span class="ai-detail-val" style="font-weight:500;color:#64748b;">gpt-4o-mini</span>
                 </div>
 
+                {{-- Manual category override --}}
+                <div style="margin-top:0.85rem; padding-top:0.85rem; border-top:1px dashed #e2e8f0;">
+                    <label for="manual-cat-select" style="display:block; font-size:0.72rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px;">
+                        Set Category Manually
+                    </label>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        <select id="manual-cat-select"
+                                style="flex:1; padding:0.45rem 0.6rem; border:1.5px solid #e2e8f0; border-radius:7px; font-size:0.82rem; background:#fff; color:#0f172a; outline:none; cursor:pointer;">
+                            @foreach(['Confirmed','Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'] as $c)
+                                <option value="{{ $c }}" {{ $reply->category === $c ? 'selected' : '' }}>{{ $c }}</option>
+                            @endforeach
+                        </select>
+                        <button onclick="changeCategory()" id="manual-cat-btn"
+                                style="background:#0891b2; color:#fff; border:none; border-radius:7px; padding:0.45rem 0.85rem; font-size:0.78rem; font-weight:600; cursor:pointer;">
+                            Save
+                        </button>
+                    </div>
+                    <div id="manual-cat-result" style="font-size:0.74rem; margin-top:5px; min-height:1em;"></div>
+                </div>
+
                 {{-- Reclassify --}}
                 <div style="margin-top:0.85rem;">
                     <button class="action-btn" onclick="reclassify()" id="reclassify-btn">
@@ -697,6 +717,7 @@ async function reclassify() {
                 'Manual Review':  { bg:'#f1f5f9', color:'#94a3b8', icon:'⚪' },
                 'No Reply':       { bg:'#fff7ed', color:'#f97316', icon:'🟠' },
                 'Bounced':        { bg:'#f5f3ff', color:'#7c3aed', icon:'↩️' },
+                'Confirmed':      { bg:'#ecfeff', color:'#0891b2', icon:'✅' },
             };
             const info = catColors[data.category] || catColors['Manual Review'];
             document.getElementById('cat-badge').style.background = info.bg;
@@ -783,6 +804,54 @@ document.addEventListener('DOMContentLoaded', function() {
 @endif
 
 // ── Thread message expand/collapse ───────────────────────────────────
+// ── Manual category override ─────────────────────────────────────────
+async function changeCategory() {
+    const sel  = document.getElementById('manual-cat-select');
+    const btn  = document.getElementById('manual-cat-btn');
+    const out  = document.getElementById('manual-cat-result');
+    const cat  = sel.value;
+    if (!cat) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    out.textContent = '';
+    out.style.color = '';
+
+    try {
+        const resp = await fetch('{{ route("admin.replies.changeCategory", $reply) }}', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': CSRF,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ category: cat }),
+        });
+        const data = await resp.json();
+
+        if (!resp.ok || !data.ok) {
+            throw new Error(data.message || data.error || 'Failed to save');
+        }
+
+        // Update the badge in the sidebar
+        const badge = document.getElementById('cat-badge');
+        if (badge) {
+            badge.style.background = data.bg;
+            badge.style.color      = data.color;
+            badge.textContent      = data.icon + ' ' + data.category;
+        }
+
+        out.textContent = '✓ Saved. Category set to ' + data.category + '.';
+        out.style.color = '#16a34a';
+    } catch (e) {
+        out.textContent = '✕ ' + e.message;
+        out.style.color = '#dc2626';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save';
+    }
+}
+
 function toggleMsg(headEl) {
     const body = headEl.nextElementSibling;
     if (body && body.classList.contains('msg-body')) {

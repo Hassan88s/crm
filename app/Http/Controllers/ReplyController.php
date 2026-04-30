@@ -16,7 +16,7 @@ class ReplyController extends Controller
         // actually leaves the table empty until the next fetch.
 
         $category = $request->get('category', 'all');
-        $categories = ['Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'];
+        $categories = ['Interested','Confirmed','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'];
 
         $query = EmailReply::with('speaker')->orderByDesc('received_at');
         if ($category !== 'all' && in_array($category, $categories)) {
@@ -305,7 +305,7 @@ class ReplyController extends Controller
     public function destroyAll(Request $request)
     {
         $category = $request->input('category');
-        $allowed  = ['Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'];
+        $allowed  = ['Interested','Confirmed','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'];
 
         if ($category && in_array($category, $allowed, true)) {
             $count = EmailReply::where('category', $category)->delete();
@@ -316,5 +316,37 @@ class ReplyController extends Controller
         $count = EmailReply::query()->delete();
         return redirect()->route('admin.replies.index')
             ->with('success', "Deleted {$count} reply(ies).");
+    }
+
+    /**
+     * Manually set the category of a single reply.
+     * Used when admin overrides the AI classification (e.g. marks "Confirmed").
+     * Returns JSON for AJAX use, with a redirect fallback.
+     */
+    public function changeCategory(Request $request, EmailReply $reply)
+    {
+        $allowed = ['Interested','Confirmed','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'];
+
+        $data = $request->validate([
+            'category' => ['required', 'string', \Illuminate\Validation\Rule::in($allowed)],
+        ]);
+
+        $reply->update([
+            'category'      => $data['category'],
+            'classified_at' => now(),
+            // Preserve ai_score & ai_raw — we don't blank historical AI data.
+        ]);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'ok'       => true,
+                'category' => $reply->category,
+                'color'    => $reply->category_color,
+                'bg'       => $reply->category_bg,
+                'icon'     => $reply->category_icon,
+            ]);
+        }
+
+        return back()->with('success', "Category set to \"{$data['category']}\".");
     }
 }

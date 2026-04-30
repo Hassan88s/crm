@@ -162,6 +162,7 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::get('replies/{reply}', [ReplyController::class, 'show'])->name('replies.show');
     Route::post('replies/fetch', [ReplyController::class, 'fetch'])->name('replies.fetch');
     Route::post('replies/{reply}/reclassify', [ReplyController::class, 'reclassify'])->name('replies.reclassify');
+    Route::post('replies/{reply}/category', [ReplyController::class, 'changeCategory'])->name('replies.changeCategory');
     Route::post('replies/{reply}/send-reply', [ReplyController::class, 'sendReply'])->name('replies.sendReply');
     Route::delete('replies/{reply}', [ReplyController::class, 'destroy'])->name('replies.destroy');
     Route::delete('replies', [ReplyController::class, 'destroyAll'])->name('replies.destroyAll');

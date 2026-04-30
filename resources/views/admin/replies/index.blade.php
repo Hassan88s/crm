@@ -348,6 +348,7 @@
     </a>
     @php
     $catInfo = [
+        'Confirmed'      => ['icon' => '✅', 'label' => 'Confirmed'],
         'Interested'     => ['icon' => '🟢', 'label' => 'Interested'],
         'Not Interested' => ['icon' => '⚫', 'label' => 'Not Interested'],
         'Info Request'   => ['icon' => '🔵', 'label' => 'Info Request'],
@@ -627,6 +628,7 @@ function reclassify(id, url) {
                     'Manual Review':  { bg: '#f1f5f9', color: '#94a3b8', icon: '⚪' },
                     'No Reply':       { bg: '#fff7ed', color: '#f97316', icon: '🟠' },
                     'Bounced':        { bg: '#f5f3ff', color: '#7c3aed', icon: '↩️' },
+                    'Confirmed':      { bg: '#ecfeff', color: '#0891b2', icon: '✅' },
                 };
                 const c = colors[cat] || colors['Manual Review'];
                 badge.style.background = c.bg;
