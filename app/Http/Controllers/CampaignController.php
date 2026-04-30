@@ -275,6 +275,86 @@ HTML;
         return back()->with('success', 'Campaign resumed.');
     }
 
+    /**
+     * Re-queue a single failed recipient so the cron picks it up again.
+     */
+    public function resendOne(Campaign $campaign, CampaignRecipient $recipient)
+    {
+        if ($recipient->campaign_id !== $campaign->id) {
+            return back()->with('error', 'Recipient does not belong to this campaign.');
+        }
+        if ($recipient->status !== 'failed') {
+            return back()->with('error', 'Only failed recipients can be resent.');
+        }
+
+        \DB::transaction(function () use ($campaign, $recipient) {
+            $recipient->update([
+                'status'       => 'pending',
+                'scheduled_at' => now(),
+                'error'        => null,
+                'sent_at'      => null,
+            ]);
+            // Decrement failed_count without going below zero
+            if ($campaign->failed_count > 0) {
+                $campaign->decrement('failed_count');
+            }
+            // Make sure the campaign is in a state that the cron will process
+            if (!in_array($campaign->status, ['running', 'paused'], true)) {
+                $campaign->update(['status' => 'running']);
+            } elseif ($campaign->status === 'paused') {
+                // If paused, leave it paused — user can hit Resume separately.
+            } elseif ($campaign->status !== 'running') {
+                $campaign->update(['status' => 'running']);
+            }
+        });
+
+        return back()->with('success', "Re-queued {$recipient->speaker?->full_name}. The cron will process it on its next tick.");
+    }
+
+    /**
+     * Re-queue every failed recipient on a campaign. Reschedules them
+     * starting from now, spaced by the campaign's throttle, so we don't
+     * burst-send if there are many.
+     */
+    public function resendFailed(Campaign $campaign)
+    {
+        $failed = $campaign->recipients()
+            ->where('status', 'failed')
+            ->orderBy('id')
+            ->get();
+
+        if ($failed->isEmpty()) {
+            return back()->with('error', 'There are no failed recipients on this campaign.');
+        }
+
+        $throttle = max(30, (int) $campaign->throttle_seconds);
+        $now      = now();
+        $count    = 0;
+
+        \DB::transaction(function () use ($campaign, $failed, $throttle, $now, &$count) {
+            foreach ($failed as $i => $r) {
+                $r->update([
+                    'status'       => 'pending',
+                    'scheduled_at' => $now->copy()->addSeconds($i * $throttle),
+                    'error'        => null,
+                    'sent_at'      => null,
+                ]);
+                $count++;
+            }
+            // Adjust failed_count down by the count we requeued
+            $campaign->decrement('failed_count', $count);
+            if ($campaign->failed_count < 0) {
+                $campaign->update(['failed_count' => 0]);
+            }
+            // Resume / start the campaign if it isn't currently running
+            if (!in_array($campaign->status, ['running'], true)) {
+                $campaign->update(['status' => 'running']);
+            }
+        });
+
+        return back()->with('success', "Re-queued {$count} failed recipient(s). They will be processed by the cron, one every {$throttle}s.");
+    }
+
     public function destroy(Campaign $campaign)
     {
         // Best-effort: delete OpenAI file

@@ -109,6 +109,17 @@
                     <button class="btn">▶ Resume</button>
                 </form>
             @endif
+
+            @php $failedCount = (int)($statusCounts['failed'] ?? 0); @endphp
+            @if($failedCount > 0)
+                <form action="{{ route('admin.campaigns.resendFailed', $campaign) }}" method="POST"
+                      onsubmit="return confirm('Re-queue all {{ $failedCount }} failed recipient(s)? They will be retried by the cron, one every {{ $campaign->throttle_seconds }} seconds.');"
+                      style="margin:0;">
+                    @csrf
+                    <button type="submit" class="btn" style="background:#a16207;">↻ Resend Failed ({{ $failedCount }})</button>
+                </form>
+            @endif
+
             <form action="{{ route('admin.campaigns.destroy', $campaign) }}" method="POST"
                   onsubmit="return confirm('Delete this campaign and all its recipients?')" style="margin:0;">
                 @csrf @method('DELETE')
@@ -208,13 +219,27 @@
                 <td style="font-size:0.78rem; color:#64748b;">{{ $r->smtpAccount?->name ?? ($r->smtp_account_id ? '#'.$r->smtp_account_id : '—') }}</td>
                 <td style="font-size:0.74rem; color:#dc2626; max-width:220px; overflow:hidden; text-overflow:ellipsis;">{{ $r->error ?: '' }}</td>
                 <td>
-                    <button class="preview-btn"
-                            data-recipient-id="{{ $r->id }}"
-                            data-name="{{ $r->speaker?->full_name }}"
-                            data-status="{{ $r->status }}"
-                            onclick="openPreview(this)">
-                        @if($r->generated_body) View email @else Preview @endif
-                    </button>
+                    <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                        <button class="preview-btn"
+                                data-recipient-id="{{ $r->id }}"
+                                data-name="{{ $r->speaker?->full_name }}"
+                                data-status="{{ $r->status }}"
+                                onclick="openPreview(this)">
+                            @if($r->generated_body) View email @else Preview @endif
+                        </button>
+                        @if($r->status === 'failed')
+                            <form action="{{ route('admin.campaigns.resendOne', [$campaign, $r]) }}" method="POST"
+                                  onsubmit="return confirm('Re-queue this recipient? Their failed send will be retried by the cron on its next tick.');"
+                                  style="margin:0;">
+                                @csrf
+                                <button type="submit"
+                                        title="Re-queue this failed recipient"
+                                        style="background:#fff; border:1.5px solid #fde68a; color:#a16207; border-radius:6px; padding:4px 10px; font-size:0.74rem; font-weight:600; cursor:pointer; white-space:nowrap;">
+                                    ↻ Resend
+                                </button>
+                            </form>
+                        @endif
+                    </div>
                 </td>
             </tr>
             @empty
