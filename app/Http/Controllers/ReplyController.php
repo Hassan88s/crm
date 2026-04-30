@@ -15,7 +15,7 @@ class ReplyController extends Controller
         $this->syncNoReplyEntries();
 
         $category = $request->get('category', 'all');
-        $categories = ['Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply'];
+        $categories = ['Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'];
 
         $query = EmailReply::with('speaker')->orderByDesc('received_at');
         if ($category !== 'all' && in_array($category, $categories)) {
@@ -304,7 +304,7 @@ class ReplyController extends Controller
     public function destroyAll(Request $request)
     {
         $category = $request->input('category');
-        $allowed  = ['Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply'];
+        $allowed  = ['Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'];
 
         if ($category && in_array($category, $allowed, true)) {
             $count = EmailReply::where('category', $category)->delete();

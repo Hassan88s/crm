@@ -696,6 +696,7 @@ async function reclassify() {
                 'Negative':       { bg:'#fff1f2', color:'#9f1239', icon:'🚫' },
                 'Manual Review':  { bg:'#f1f5f9', color:'#94a3b8', icon:'⚪' },
                 'No Reply':       { bg:'#fff7ed', color:'#f97316', icon:'🟠' },
+                'Bounced':        { bg:'#f5f3ff', color:'#7c3aed', icon:'↩️' },
             };
             const info = catColors[data.category] || catColors['Manual Review'];
             document.getElementById('cat-badge').style.background = info.bg;

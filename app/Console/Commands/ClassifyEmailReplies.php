@@ -11,7 +11,7 @@ class ClassifyEmailReplies extends Command
     protected $signature   = 'emails:classify-replies {--limit=100 : Max messages to scan}';
     protected $description = 'Fetch emails from IMAP and classify replies with AI';
 
-    private const ALLOWED_LABELS = ['Interested','Not Interested','Info Request','Out of Office','Spam','Negative'];
+    private const ALLOWED_LABELS = ['Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Bounced'];
 
     public function handle(): int
     {
@@ -96,7 +96,14 @@ class ClassifyEmailReplies extends Command
                     continue;
                 }
 
-                [$category, $score, $raw] = $this->classify($bodyPlain, $subject, $apiKey);
+                // Heuristic pre-check for obvious bounces — saves an OpenAI call
+                if ($this->looksLikeBounce($fromEmail, $subject, $bodyPlain, $rawHeader)) {
+                    $category = 'Bounced';
+                    $score    = 100;
+                    $raw      = ['heuristic' => true, 'reason' => 'mailer-daemon / DSN markers'];
+                } else {
+                    [$category, $score, $raw] = $this->classify($bodyPlain, $subject, $apiKey);
+                }
 
                 EmailReply::create([
                     'message_id'    => $msgId,
@@ -126,6 +133,55 @@ class ClassifyEmailReplies extends Command
         return 0;
     }
 
+    /**
+     * Quick non-AI check for bounce / NDR (Non-Delivery Report) emails.
+     * Returns true on strong, obvious signals so we skip the OpenAI call.
+     */
+    private function looksLikeBounce(string $fromEmail, string $subject, string $body, string $rawHeader): bool
+    {
+        $from = strtolower($fromEmail);
+        $sub  = strtolower($subject);
+        $head = strtolower($rawHeader);
+
+        // 1) Sender is a postmaster / mailer-daemon
+        $senderMarkers = ['mailer-daemon', 'postmaster', 'mail-daemon', 'mail delivery system', 'noreply-bounces', 'bounces+'];
+        foreach ($senderMarkers as $m) {
+            if (str_contains($from, $m)) return true;
+        }
+
+        // 2) Subject contains classic NDR phrases
+        $subjectMarkers = [
+            'undeliverable', 'undelivered mail', 'mail delivery failed', 'mail delivery failure',
+            'delivery status notification', 'returned mail', 'could not be delivered',
+            'returned to sender', 'failure notice', 'delivery has failed',
+        ];
+        foreach ($subjectMarkers as $m) {
+            if (str_contains($sub, $m)) return true;
+        }
+
+        // 3) RFC 3464 headers (DSN content type / Auto-Submitted)
+        if (str_contains($head, 'content-type: multipart/report') && str_contains($head, 'report-type=delivery-status')) {
+            return true;
+        }
+        if (preg_match('/auto-submitted:\s*auto-replied|auto-generated/i', $head)) {
+            // auto-replied alone usually = Out of Office, NOT a bounce — only treat as bounce
+            // if combined with one of the body markers below.
+        }
+
+        // 4) Body has SMTP failure codes or recipient-rejection language
+        $bodyMarkers = [
+            "550 5.1.1", "550 5.7", "554 5.", "5.1.1", "5.0.0",
+            'recipient address rejected', "user unknown", "no such user",
+            "address not found", "mailbox unavailable", "does not exist",
+        ];
+        $bodyLower = mb_strtolower($body);
+        foreach ($bodyMarkers as $m) {
+            if (str_contains($bodyLower, $m)) return true;
+        }
+
+        return false;
+    }
+
     // ── Classify via OpenAI ──────────────────────────────────────────────────
 
     private function classify(string $body, string $subject, string $apiKey): array
@@ -137,7 +193,8 @@ class ClassifyEmailReplies extends Command
                 . "- Info Request\n"
                 . "- Out of Office\n"
                 . "- Spam\n"
-                . "- Negative\n\n"
+                . "- Negative\n"
+                . "- Bounced\n\n"
                 . "Also give a lead score from 0 to 100 reflecting intent strength.\n\n"
                 . "Rules:\n"
                 . "- Interested: they want to speak, accept, show genuine interest\n"
@@ -145,7 +202,8 @@ class ClassifyEmailReplies extends Command
                 . "- Info Request: asking for more details, agenda, brochure, fees\n"
                 . "- Out of Office: auto-reply, away message, vacation response\n"
                 . "- Spam: unrelated, phishing, marketing blast, auto-promo\n"
-                . "- Negative: angry, upset, unsubscribe request, rude tone\n\n"
+                . "- Negative: angry, upset, unsubscribe request, rude tone\n"
+                . "- Bounced: automated non-delivery report from a mail server. Strong signals: sender contains \"mailer-daemon\", \"postmaster\", \"mail-daemon\"; subject contains \"undeliverable\", \"mail delivery failed\", \"delivery status notification\", \"returned mail\", \"could not be delivered\"; body mentions SMTP error codes (550, 5.1.1, 5.0.0, etc.) or \"recipient address rejected\".\n\n"
                 . "Return ONLY valid JSON in this exact format (no markdown, no explanation):\n"
                 . "{\"label\":\"Interested\",\"score\":87}\n\n"
                 . "Subject: {$subject}\n\n"

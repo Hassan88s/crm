@@ -356,6 +356,7 @@
         'Negative'       => ['icon' => '🚫', 'label' => 'Negative'],
         'Manual Review'  => ['icon' => '⚪', 'label' => 'Manual Review'],
         'No Reply'       => ['icon' => '🟠', 'label' => 'No Reply'],
+        'Bounced'        => ['icon' => '↩️', 'label' => 'Bounced'],
     ];
     @endphp
     @foreach($catInfo as $key => $info)
@@ -625,6 +626,7 @@ function reclassify(id, url) {
                     'Negative':       { bg: '#fff1f2', color: '#9f1239', icon: '🚫' },
                     'Manual Review':  { bg: '#f1f5f9', color: '#94a3b8', icon: '⚪' },
                     'No Reply':       { bg: '#fff7ed', color: '#f97316', icon: '🟠' },
+                    'Bounced':        { bg: '#f5f3ff', color: '#7c3aed', icon: '↩️' },
                 };
                 const c = colors[cat] || colors['Manual Review'];
                 badge.style.background = c.bg;

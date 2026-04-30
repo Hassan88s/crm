@@ -32,6 +32,7 @@ class EmailReply extends Model
             'Spam'           => '#dc2626',
             'Negative'       => '#9f1239',
             'No Reply'       => '#f97316',
+            'Bounced'        => '#7c3aed',
             default          => '#94a3b8',
         };
     }
@@ -46,6 +47,7 @@ class EmailReply extends Model
             'Spam'           => '#fef2f2',
             'Negative'       => '#fff1f2',
             'No Reply'       => '#fff7ed',
+            'Bounced'        => '#f5f3ff',
             default          => '#f1f5f9',
         };
     }
@@ -60,6 +62,7 @@ class EmailReply extends Model
             'Spam'           => '🔴',
             'Negative'       => '🚫',
             'No Reply'       => '🟠',
+            'Bounced'        => '↩️',
             default          => '⚪',
         };
     }
