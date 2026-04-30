@@ -159,7 +159,23 @@ class ReplyController extends Controller
             ->get()
             ->keyBy(fn($r) => strtolower($r->from_email));
 
+        // Set of addresses that have ever bounced — never put these in No Reply.
+        $bouncedEmails = EmailReply::where('category', 'Bounced')
+            ->pluck('from_email')
+            ->map(fn($e) => strtolower($e))
+            ->unique()
+            ->flip(); // keys = lowercased emails, for O(1) lookup
+
         foreach ($lastSent as $email => $log) {
+            // If this address has bounced, skip it AND remove any stale
+            // "No Reply" placeholder we may have created earlier.
+            if (isset($bouncedEmails[$email])) {
+                EmailReply::where('from_email', $log->to_email)
+                    ->where('category', 'No Reply')
+                    ->delete();
+                continue;
+            }
+
             $lastSentAt  = $log->last_sent_at;
             $lastReplyAt = $lastReply[$email]->last_reply_at ?? null;
 
