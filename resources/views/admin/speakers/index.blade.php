@@ -221,7 +221,30 @@
             <option value="linkedin_url" {{ ($missing ?? '') === 'linkedin_url' ? 'selected' : '' }}>Missing: LinkedIn URL</option>
         </select>
 
-        @if($eventId || $search || !empty($missing))
+        {{-- Bounced-only toggle (preserves search + event_id + missing via hidden inputs) --}}
+        @php $bouncedActive = !empty($bouncedOnly); @endphp
+        @if($bouncedActive)
+            {{-- Hidden marker so the form submission keeps the filter when changing other dropdowns --}}
+            <input type="hidden" name="bounced" value="1">
+            <a href="{{ route('admin.speakers.index', array_filter(['event_id' => $eventId, 'search' => $search, 'missing' => $missing])) }}"
+               style="display:inline-flex; align-items:center; gap:6px;
+                      padding:0.45rem 0.85rem; border-radius:8px;
+                      background:#f5f3ff; color:#7c3aed; border:1.5px solid #7c3aed33;
+                      font-size:0.78rem; font-weight:700; text-decoration:none; white-space:nowrap;">
+                ↩️ Bounced only ✕
+            </a>
+        @else
+            <a href="{{ route('admin.speakers.index', array_filter(['event_id' => $eventId, 'search' => $search, 'missing' => $missing, 'bounced' => 1])) }}"
+               style="display:inline-flex; align-items:center; gap:6px;
+                      padding:0.45rem 0.85rem; border-radius:8px;
+                      background:#fff; color:#7c3aed; border:1.5px solid #e2e8f0;
+                      font-size:0.78rem; font-weight:600; text-decoration:none; white-space:nowrap;"
+               title="Show only speakers whose email has bounced">
+                ↩️ Bounced only
+            </a>
+        @endif
+
+        @if($eventId || $search || !empty($missing) || !empty($bouncedOnly))
             <a href="{{ route('admin.speakers.index') }}"
                style="font-size:0.78rem; color:#64748b; text-decoration:none; white-space:nowrap; padding:0.4rem 0.5rem;">
                ✕ Clear
@@ -274,7 +297,22 @@
                                 </div>
                             @endif
                             <div>
-                                <div style="font-weight:600; color:#0f172a;">{{ $speaker->full_name }}</div>
+                                <div style="font-weight:600; color:#0f172a; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                    {{ $speaker->full_name }}
+                                    @php
+                                        $isBounced = !empty($bouncedEmails) && $speaker->email
+                                                     && isset($bouncedEmails[strtolower($speaker->email)]);
+                                    @endphp
+                                    @if($isBounced)
+                                        <span title="This speaker's email has bounced"
+                                              style="display:inline-flex; align-items:center; gap:3px;
+                                                     background:#f5f3ff; color:#7c3aed; border:1px solid #7c3aed33;
+                                                     padding:1px 7px; border-radius:999px;
+                                                     font-size:0.65rem; font-weight:700; letter-spacing:0.02em;">
+                                            ↩️ Bounced
+                                        </span>
+                                    @endif
+                                </div>
                             </div>
                         </div>
                     </td>

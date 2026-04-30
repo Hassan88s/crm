@@ -30,6 +30,7 @@ class SpeakerController extends Controller
         $eventId = $request->get('event_id');
         $search  = $request->get('search');
         $missing = $request->get('missing'); // e.g. "title", "company", "email", "country", "seniority", "linkedin_url"
+        $bouncedOnly = $request->boolean('bounced');
 
         $query = Speaker::with('event')->latest();
 
@@ -56,9 +57,26 @@ class SpeakerController extends Controller
             });
         }
 
+        // Build the bounced set ONCE — addresses that ever appeared in a bounce
+        $bouncedEmails = \App\Models\EmailReply::bouncedEmailsSet();
+
+        // Optional filter: only speakers whose email has bounced
+        if ($bouncedOnly) {
+            $emails = array_keys($bouncedEmails);
+            if (empty($emails)) {
+                // Force an empty result set (no bounced speakers possible)
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereIn(\DB::raw('LOWER(email)'), $emails);
+            }
+        }
+
         $speakers = $query->paginate(50)->withQueryString();
 
-        return view('admin.speakers.index', compact('speakers', 'events', 'eventId', 'search', 'missing'));
+        return view('admin.speakers.index', compact(
+            'speakers', 'events', 'eventId', 'search', 'missing',
+            'bouncedEmails', 'bouncedOnly'
+        ));
     }
 
     public function create()
