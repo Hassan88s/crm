@@ -455,12 +455,24 @@
                             @endif
                         </td>
 
-                        {{-- Category badge --}}
-                        <td>
-                            <span class="cat-badge cat-{{ $reply->id }}"
-                                  style="background:{{ $reply->category_bg }};color:{{ $reply->category_color }};">
-                                {{ $reply->category_icon }} {{ $reply->category }}
-                            </span>
+                        {{-- Category badge / inline editor --}}
+                        <td onclick="event.stopPropagation();">
+                            <select class="cat-select cat-{{ $reply->id }}"
+                                    data-reply-id="{{ $reply->id }}"
+                                    data-url="{{ route('admin.replies.changeCategory', $reply) }}"
+                                    onclick="event.stopPropagation();"
+                                    onchange="onCategoryChange(this)"
+                                    style="background:{{ $reply->category_bg }};color:{{ $reply->category_color }};
+                                           border:1px solid {{ $reply->category_color }}33;
+                                           border-radius:999px; padding:3px 22px 3px 10px;
+                                           font-size:0.75rem; font-weight:600; cursor:pointer;
+                                           appearance:none; -webkit-appearance:none;
+                                           background-image:url('data:image/svg+xml;utf8,<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;10&quot; height=&quot;10&quot; viewBox=&quot;0 0 24 24&quot; fill=&quot;none&quot; stroke=&quot;{{ str_replace('#', '%23', $reply->category_color) }}&quot; stroke-width=&quot;3&quot; stroke-linecap=&quot;round&quot;><path d=&quot;M6 9l6 6 6-6&quot;/></svg>');
+                                           background-repeat:no-repeat; background-position:right 6px center;">
+                                @foreach(['Confirmed','Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'] as $c)
+                                    <option value="{{ $c }}" {{ $reply->category === $c ? 'selected' : '' }}>{{ $c }}</option>
+                                @endforeach
+                            </select>
                         </td>
 
                         {{-- Score --}}
@@ -599,6 +611,53 @@ function fetchAndClassify() {
         spinner.style.display = 'none';
         icon.style.display = 'block';
     });
+}
+
+// ── Inline category change (dropdown in each row) ────────────────────────────
+function onCategoryChange(sel) {
+    const id  = sel.dataset.replyId;
+    const url = sel.dataset.url;
+    const cat = sel.value;
+    const colors = {
+        'Interested':     { bg: '#f0fdf4', color: '#16a34a', icon: '🟢' },
+        'Not Interested': { bg: '#f8fafc', color: '#64748b', icon: '⚫' },
+        'Info Request':   { bg: '#eff6ff', color: '#2563eb', icon: '🔵' },
+        'Out of Office':  { bg: '#fefce8', color: '#ca8a04', icon: '🟡' },
+        'Spam':           { bg: '#fef2f2', color: '#dc2626', icon: '🔴' },
+        'Negative':       { bg: '#fff1f2', color: '#9f1239', icon: '🚫' },
+        'Manual Review':  { bg: '#f1f5f9', color: '#94a3b8', icon: '⚪' },
+        'No Reply':       { bg: '#fff7ed', color: '#f97316', icon: '🟠' },
+        'Bounced':        { bg: '#f5f3ff', color: '#7c3aed', icon: '↩️' },
+        'Confirmed':      { bg: '#ecfeff', color: '#0891b2', icon: '✅' },
+    };
+
+    const original = sel.dataset.lastValue || sel.options[sel.selectedIndex].defaultSelected;
+    sel.dataset.lastValue = cat;
+    sel.disabled = true;
+
+    fetch(url, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: cat }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.ok) throw new Error(data.message || data.error || 'Failed');
+        const c = colors[cat] || colors['Manual Review'];
+        sel.style.background = c.bg;
+        sel.style.color = c.color;
+        sel.style.borderColor = c.color + '33';
+        sel.style.backgroundImage =
+            'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'' +
+            encodeURIComponent(c.color) + '\' stroke-width=\'3\' stroke-linecap=\'round\'><path d=\'M6 9l6 6 6-6\'/></svg>")';
+        sel.style.backgroundRepeat = 'no-repeat';
+        sel.style.backgroundPosition = 'right 6px center';
+        showToast('✓ Set to ' + cat, 'ok');
+    })
+    .catch(e => {
+        showToast('✗ ' + e.message, 'err');
+    })
+    .finally(() => { sel.disabled = false; });
 }
 
 // ── Reclassify a single reply ────────────────────────────────────────────────
