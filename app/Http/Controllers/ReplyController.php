@@ -11,8 +11,9 @@ class ReplyController extends Controller
 {
     public function index(Request $request)
     {
-        // Sync "No Reply" entries before showing the list
-        $this->syncNoReplyEntries();
+        // No Reply entries are synced when the user clicks Fetch & Classify
+        // (see fetch()). We don't sync on every page load so that Delete All
+        // actually leaves the table empty until the next fetch.
 
         $category = $request->get('category', 'all');
         $categories = ['Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'];
