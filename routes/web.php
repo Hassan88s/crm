@@ -98,6 +98,8 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::get('emails',                       [CampaignController::class, 'index'])->name('campaigns.index');
     Route::get('emails/create',                [CampaignController::class, 'create'])->name('campaigns.create');
     Route::post('emails',                      [CampaignController::class, 'store'])->name('campaigns.store');
+    Route::get('emails/create-manual',         [CampaignController::class, 'createManual'])->name('campaigns.createManual');
+    Route::post('emails/manual',               [CampaignController::class, 'storeManual'])->name('campaigns.storeManual');
     Route::get('emails/{campaign}',            [CampaignController::class, 'show'])->name('campaigns.show');
     Route::post('emails/{campaign}/start',     [CampaignController::class, 'start'])->name('campaigns.start');
     Route::post('emails/{campaign}/toggle-attach', [CampaignController::class, 'toggleAttach'])->name('campaigns.toggleAttach');

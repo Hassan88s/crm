@@ -178,6 +178,7 @@ HTML;
 
         $campaign = Campaign::create([
             'name'               => $data['name'],
+            'mode'               => 'ai',
             'subject_template'   => $data['subject_template'],
             'body_template'      => $data['body_template'],
             'signature_template' => $data['signature_template'] ?? self::DEFAULT_SIGNATURE_TEMPLATE,
@@ -208,6 +209,141 @@ HTML;
 
         return redirect()->route('admin.campaigns.show', $campaign)
             ->with('success', 'Campaign saved as draft.');
+    }
+
+    /**
+     * Manual campaign — no AI, no PDF. The user writes the subject + body and
+     * picks the audience either by event, by reply category (Confirmed,
+     * Bounced, No Reply, etc.), or by selecting individual speakers.
+     */
+    public function createManual(Request $request)
+    {
+        $events   = Event::withCount('speakers')->orderBy('name')->get();
+        $speakers = Speaker::with('event')->orderBy('first_name')->get();
+
+        // Counts per reply category (so the dropdown shows e.g. "No Reply (12)")
+        $categoryCounts = \App\Models\EmailReply::selectRaw('category, COUNT(DISTINCT speaker_id) as c')
+            ->whereNotNull('speaker_id')
+            ->groupBy('category')
+            ->pluck('c', 'category')
+            ->toArray();
+
+        // Bounced is special: speakers are matched via the body-parsed set
+        $bouncedEmails = \App\Models\EmailReply::bouncedEmailsSet();
+        $bouncedCount  = $bouncedEmails
+            ? Speaker::whereIn(\DB::raw('LOWER(email)'), array_keys($bouncedEmails))->count()
+            : 0;
+        $categoryCounts['Bounced'] = $bouncedCount;
+
+        return view('admin.campaigns.create-manual', [
+            'events'             => $events,
+            'speakers'           => $speakers,
+            'defaultSignature'   => self::DEFAULT_SIGNATURE_TEMPLATE,
+            'preselectedEventId' => $request->get('event_id'),
+            'categories'         => [
+                'Confirmed', 'Interested', 'Info Request', 'Out of Office',
+                'Spam', 'Negative', 'Manual Review', 'No Reply', 'Bounced',
+            ],
+            'categoryCounts'     => $categoryCounts,
+        ]);
+    }
+
+    public function storeManual(Request $request)
+    {
+        $rules = [
+            'name'               => 'required|string|max:120',
+            'subject_template'   => 'required|string|max:255',
+            'body_template'      => 'required|string',
+            'signature_template' => 'nullable|string',
+            'throttle_seconds'   => 'required|integer|min:30|max:3600',
+            'audience_type'      => 'required|in:event,category,manual',
+            'event_id'           => 'nullable|exists:events,id',
+            'category'           => 'nullable|string|max:50',
+            'speaker_ids'        => 'nullable|array',
+            'speaker_ids.*'      => 'exists:speakers,id',
+            'start_now'          => 'nullable|in:0,1',
+        ];
+        $data = $request->validate($rules);
+
+        // Resolve the recipient set based on audience_type
+        $eventId    = null;
+        $speakerIds = [];
+
+        switch ($data['audience_type']) {
+            case 'event':
+                if (empty($data['event_id'])) {
+                    return back()->withInput()->with('error', 'Please pick an event.');
+                }
+                $eventId    = (int) $data['event_id'];
+                $speakerIds = Speaker::where('event_id', $eventId)->pluck('id')->all();
+                break;
+
+            case 'category':
+                $cat = $data['category'] ?? null;
+                if (!$cat) {
+                    return back()->withInput()->with('error', 'Please pick a reply category.');
+                }
+                if ($cat === 'Bounced') {
+                    $bouncedEmails = \App\Models\EmailReply::bouncedEmailsSet();
+                    $speakerIds = $bouncedEmails
+                        ? Speaker::whereIn(\DB::raw('LOWER(email)'), array_keys($bouncedEmails))->pluck('id')->all()
+                        : [];
+                } else {
+                    $speakerIds = \App\Models\EmailReply::where('category', $cat)
+                        ->whereNotNull('speaker_id')
+                        ->distinct()
+                        ->pluck('speaker_id')
+                        ->all();
+                }
+                break;
+
+            case 'manual':
+            default:
+                $speakerIds = $data['speaker_ids'] ?? [];
+                break;
+        }
+
+        // Filter out speakers without an email (we can't send to them)
+        if (!empty($speakerIds)) {
+            $speakerIds = Speaker::whereIn('id', $speakerIds)
+                ->whereNotNull('email')
+                ->where('email', '!=', '')
+                ->pluck('id')
+                ->all();
+        }
+
+        if (empty($speakerIds)) {
+            return back()->withInput()->with('error', 'No matching speakers with valid email addresses for this audience.');
+        }
+
+        $campaign = Campaign::create([
+            'name'               => $data['name'],
+            'mode'               => 'manual',
+            'subject_template'   => $data['subject_template'],
+            'body_template'      => $data['body_template'],
+            'signature_template' => $data['signature_template'] ?? self::DEFAULT_SIGNATURE_TEMPLATE,
+            'event_id'           => $eventId,
+            'throttle_seconds'   => (int) $data['throttle_seconds'],
+            'attach_agenda'      => false,  // manual campaigns never attach a PDF
+            'status'             => 'draft',
+            'total_count'        => count($speakerIds),
+        ]);
+
+        foreach ($speakerIds as $sid) {
+            CampaignRecipient::firstOrCreate(
+                ['campaign_id' => $campaign->id, 'speaker_id' => $sid],
+                ['status' => 'pending']
+            );
+        }
+
+        if ($request->boolean('start_now')) {
+            $this->startCampaign($campaign);
+            return redirect()->route('admin.campaigns.show', $campaign)
+                ->with('success', 'Manual campaign started. The first email will go out within ~1 minute.');
+        }
+
+        return redirect()->route('admin.campaigns.show', $campaign)
+            ->with('success', 'Manual campaign saved as draft.');
     }
 
     public function show(Request $request, Campaign $campaign)

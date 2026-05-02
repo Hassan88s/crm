@@ -60,12 +60,21 @@
             AI-personalised speaker invitations sent through your rotated SMTP accounts.
         </p>
     </div>
-    <a href="{{ route('admin.campaigns.create') }}" class="btn">
-        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
-        </svg>
-        New Campaign
-    </a>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <a href="{{ route('admin.campaigns.createManual') }}" class="btn"
+           style="background:#fff; color:#7c3aed; border:1.5px solid #ddd6fe;">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+            </svg>
+            Manual Campaign
+        </a>
+        <a href="{{ route('admin.campaigns.create') }}" class="btn">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+            </svg>
+            New AI Campaign
+        </a>
+    </div>
 </div>
 
 {{-- Cron / scheduler heartbeat --}}
@@ -146,6 +155,7 @@
             <thead>
                 <tr>
                     <th>Name</th>
+                    <th>Mode</th>
                     <th>Status</th>
                     <th>Recipients</th>
                     <th>Progress</th>
@@ -163,6 +173,14 @@
                         </a>
                         @if($c->agenda_filename)
                             <div style="font-size:0.72rem; color:#94a3b8; margin-top:2px;">📎 {{ $c->agenda_filename }}</div>
+                        @endif
+                    </td>
+                    <td>
+                        @php $mode = $c->mode ?? 'ai'; @endphp
+                        @if($mode === 'manual')
+                            <span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; font-size:0.66rem; font-weight:700; text-transform:uppercase; background:#f5f3ff; color:#7c3aed; border:1px solid #ddd6fe;">✋ Manual</span>
+                        @else
+                            <span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; font-size:0.66rem; font-weight:700; text-transform:uppercase; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe;">✨ AI</span>
                         @endif
                     </td>
                     <td><span class="pill pill-{{ $c->status }}">{{ ucfirst($c->status) }}</span></td>

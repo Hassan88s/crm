@@ -36,8 +36,20 @@ class CampaignSender
         $recipient->update(['status' => 'processing']);
 
         try {
-            // 1) Ask AI for the personalised email
-            $ai = $this->generateEmail($campaign, $speaker);
+            $isManual = ($campaign->mode ?? 'ai') === 'manual';
+
+            if ($isManual) {
+                // Manual mode: no AI, no PDF — just template + variable replacement
+                $ai = [
+                    'topic'           => '',
+                    'subject'         => $campaign->subject_template,
+                    'body_html'       => $campaign->body_template,
+                    'research_notes'  => '',
+                ];
+            } else {
+                // 1) Ask AI for the personalised email
+                $ai = $this->generateEmail($campaign, $speaker);
+            }
 
             $subject = $this->replaceVars(
                 $ai['subject'] ?? $campaign->subject_template,
