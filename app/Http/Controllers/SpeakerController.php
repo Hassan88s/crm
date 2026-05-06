@@ -79,6 +79,107 @@ class SpeakerController extends Controller
         ));
     }
 
+    /**
+     * Export the (filtered) speakers list as a CSV download.
+     * Honours every filter from index(): event_id, search, missing, bounced.
+     */
+    public function export(Request $request)
+    {
+        $eventId      = $request->get('event_id');
+        $search       = $request->get('search');
+        $missing      = $request->get('missing');
+        $bouncedOnly  = $request->boolean('bounced');
+
+        $query = Speaker::with('event')->orderBy('first_name')->orderBy('last_name');
+
+        if ($eventId) {
+            $query->where('event_id', $eventId);
+        }
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('first_name', 'like', "%{$search}%")
+                  ->orWhere('last_name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhere('company', 'like', "%{$search}%")
+                  ->orWhere('country', 'like', "%{$search}%")
+                  ->orWhere('title', 'like', "%{$search}%");
+            });
+        }
+
+        $allowedMissing = ['title', 'company', 'email', 'country', 'seniority', 'linkedin_url'];
+        if (in_array($missing, $allowedMissing, true)) {
+            $query->where(function ($q) use ($missing) {
+                $q->whereNull($missing)->orWhere($missing, '');
+            });
+        }
+
+        $bouncedEmails = \App\Models\EmailReply::bouncedEmailsSet();
+
+        if ($bouncedOnly) {
+            $emails = array_keys($bouncedEmails);
+            if (empty($emails)) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereIn(\DB::raw('LOWER(email)'), $emails);
+            }
+        }
+
+        // Build a friendly filename
+        $stamp = now()->format('Y-m-d_His');
+        $tags  = [];
+        if ($eventId)     $tags[] = 'event-' . $eventId;
+        if ($missing)     $tags[] = 'missing-' . $missing;
+        if ($bouncedOnly) $tags[] = 'bounced';
+        if ($search)      $tags[] = 'search';
+        $filename = 'speakers' . (empty($tags) ? '' : '_' . implode('_', $tags)) . '_' . $stamp . '.csv';
+
+        $headers = [
+            'Content-Type'        => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Pragma'              => 'no-cache',
+            'Cache-Control'       => 'no-cache, no-store, must-revalidate',
+            'Expires'             => '0',
+        ];
+
+        $columns = [
+            'First Name', 'Last Name', 'Title', 'Company',
+            'Email', 'LinkedIn URL', 'Seniority', 'Country',
+            'Event', 'Bounced', 'Created At',
+        ];
+
+        return response()->stream(function () use ($query, $columns, $bouncedEmails) {
+            $out = fopen('php://output', 'w');
+
+            // UTF-8 BOM so Excel opens the file with proper accents
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, $columns);
+
+            $query->chunkById(500, function ($rows) use ($out, $bouncedEmails) {
+                foreach ($rows as $s) {
+                    $emailLc = strtolower((string) $s->email);
+                    $isBounced = $emailLc !== '' && isset($bouncedEmails[$emailLc]) ? 'Yes' : '';
+
+                    fputcsv($out, [
+                        $s->first_name,
+                        $s->last_name,
+                        $s->title,
+                        $s->company,
+                        $s->email,
+                        $s->linkedin_url,
+                        $s->seniority,
+                        $s->country,
+                        $s->event?->name,
+                        $isBounced,
+                        $s->created_at?->format('Y-m-d H:i'),
+                    ]);
+                }
+            });
+
+            fclose($out);
+        }, 200, $headers);
+    }
+
     public function create()
     {
         $events = Event::orderBy('name')->get();
