@@ -48,6 +48,42 @@ Tel: +420 773 652 384
 </p>
 HTML;
 
+    /**
+     * When picking "No Reply" as a manual-campaign audience, only include
+     * speakers whose last sent email was at least this many days ago.
+     * Avoids emailing the same person twice in quick succession.
+     */
+    public const NO_REPLY_COOLDOWN_DAYS = 2;
+
+    /**
+     * Speakers eligible for a No-Reply follow-up:
+     *   - they are in the No Reply category, AND
+     *   - their most recent sent email was >= NO_REPLY_COOLDOWN_DAYS ago.
+     *
+     * Returns an array of speaker IDs.
+     */
+    private function noReplyFollowupSpeakerIds(int $cooldownDays = self::NO_REPLY_COOLDOWN_DAYS): array
+    {
+        $noReplySpeakers = \App\Models\EmailReply::where('category', 'No Reply')
+            ->whereNotNull('speaker_id')
+            ->distinct()
+            ->pluck('speaker_id')
+            ->all();
+
+        if (empty($noReplySpeakers)) {
+            return [];
+        }
+
+        $cutoff = now()->subDays($cooldownDays);
+
+        return \App\Models\EmailLog::whereIn('speaker_id', $noReplySpeakers)
+            ->where('status', 'sent')
+            ->groupBy('speaker_id')
+            ->havingRaw('MAX(created_at) <= ?', [$cutoff])
+            ->pluck('speaker_id')
+            ->all();
+    }
+
     public function index()
     {
         $campaigns   = Campaign::withCount('recipients')->latest()->get();
@@ -235,11 +271,17 @@ HTML;
             : 0;
         $categoryCounts['Bounced'] = $bouncedCount;
 
+        // No Reply uses a cooldown: only include speakers whose last sent
+        // email was >= NO_REPLY_COOLDOWN_DAYS ago, so we don't send a
+        // follow-up to someone we just emailed.
+        $categoryCounts['No Reply'] = count($this->noReplyFollowupSpeakerIds());
+
         return view('admin.campaigns.create-manual', [
             'events'             => $events,
             'speakers'           => $speakers,
             'defaultSignature'   => self::DEFAULT_SIGNATURE_TEMPLATE,
             'preselectedEventId' => $request->get('event_id'),
+            'noReplyCooldownDays' => self::NO_REPLY_COOLDOWN_DAYS,
             'categories'         => [
                 'Confirmed', 'Interested', 'Info Request', 'Out of Office',
                 'Spam', 'Negative', 'Manual Review', 'No Reply', 'Bounced',
@@ -288,6 +330,9 @@ HTML;
                     $speakerIds = $bouncedEmails
                         ? Speaker::whereIn(\DB::raw('LOWER(email)'), array_keys($bouncedEmails))->pluck('id')->all()
                         : [];
+                } elseif ($cat === 'No Reply') {
+                    // Follow-up cooldown: skip anyone we emailed in the last N days.
+                    $speakerIds = $this->noReplyFollowupSpeakerIds();
                 } else {
                     $speakerIds = \App\Models\EmailReply::where('category', $cat)
                         ->whereNotNull('speaker_id')

@@ -143,8 +143,11 @@
                     </option>
                 @endforeach
             </select>
-            <p style="font-size:0.74rem; color:#94a3b8; margin-top:5px;">
-                <strong>Bounced:</strong> matched by parsing bounce-notification bodies, so these are speakers whose addresses actually failed delivery.
+            <p style="font-size:0.74rem; color:#94a3b8; margin-top:5px; line-height:1.5;">
+                <strong>Bounced:</strong> matched by parsing bounce-notification bodies, so these are speakers whose addresses actually failed delivery.<br>
+                <strong>No Reply:</strong> follow-up cooldown — only includes speakers whose <em>last</em> email was at least
+                <strong>{{ $noReplyCooldownDays ?? 2 }} day{{ ($noReplyCooldownDays ?? 2) === 1 ? '' : 's' }}</strong> ago,
+                so you don't email the same person twice in quick succession.
             </p>
         </div>
 
