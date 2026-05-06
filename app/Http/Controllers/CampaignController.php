@@ -303,6 +303,8 @@ HTML;
             'category'           => 'nullable|string|max:50',
             'speaker_ids'        => 'nullable|array',
             'speaker_ids.*'      => 'exists:speakers,id',
+            'attachment_pdf'     => 'nullable|file|mimes:pdf|max:20480',
+            'attach_pdf'         => 'nullable|in:0,1',
             'start_now'          => 'nullable|in:0,1',
         ];
         $data = $request->validate($rules);
@@ -361,15 +363,33 @@ HTML;
             return back()->withInput()->with('error', 'No matching speakers with valid email addresses for this audience.');
         }
 
+        // Optional PDF attachment (manual mode just attaches, no AI involved)
+        $pdfPath     = null;
+        $pdfFilename = null;
+        $attachPdf   = false;
+        if ($request->hasFile('attachment_pdf')) {
+            $f = $request->file('attachment_pdf');
+            $pdfFilename = $f->getClientOriginalName();
+            $safe = uniqid() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $pdfFilename);
+            $dir = storage_path('app' . DIRECTORY_SEPARATOR . 'campaign_pdfs');
+            if (!is_dir($dir)) mkdir($dir, 0775, true);
+            $f->move($dir, $safe);
+            $pdfPath = 'campaign_pdfs/' . $safe;
+            // Default to attaching when a file is uploaded; respect explicit checkbox if present
+            $attachPdf = $request->boolean('attach_pdf', true);
+        }
+
         $campaign = Campaign::create([
             'name'               => $data['name'],
             'mode'               => 'manual',
             'subject_template'   => $data['subject_template'],
             'body_template'      => $data['body_template'],
             'signature_template' => $data['signature_template'] ?? self::DEFAULT_SIGNATURE_TEMPLATE,
+            'agenda_pdf_path'    => $pdfPath,
+            'agenda_filename'    => $pdfFilename,
             'event_id'           => $eventId,
             'throttle_seconds'   => (int) $data['throttle_seconds'],
-            'attach_agenda'      => false,  // manual campaigns never attach a PDF
+            'attach_agenda'      => $attachPdf,
             'status'             => 'draft',
             'total_count'        => count($speakerIds),
         ]);

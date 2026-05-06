@@ -83,7 +83,7 @@
     <span><strong>Manual mode:</strong> No AI, no agenda PDF. Your subject and body are sent as-is, with template tokens like <code>{first_name}</code>, <code>{full_name}</code>, <code>{company}</code>, <code>{title}</code>, <code>{country}</code>, <code>{event_name}</code>, <code>{deadline_date}</code>, <code>{smtp_from_name}</code> replaced per recipient.</span>
 </div>
 
-<form action="{{ route('admin.campaigns.storeManual') }}" method="POST" id="manual-campaign-form">
+<form action="{{ route('admin.campaigns.storeManual') }}" method="POST" enctype="multipart/form-data" id="manual-campaign-form">
     @csrf
 
     {{-- 1. Basics --}}
@@ -203,7 +203,39 @@
         </div>
     </div>
 
-    {{-- 4. Throttle / start --}}
+    {{-- 4. Optional PDF attachment --}}
+    <div class="step-card">
+        <h2>Attachment (optional)</h2>
+        <p class="hint">Attach a single PDF (e.g. agenda, brochure) — sent with every email in this campaign.</p>
+
+        <div class="form-group full">
+            <label for="manual-pdf"
+                   style="display:flex; align-items:center; justify-content:center; flex-direction:column;
+                          border:2px dashed #d1d5db; border-radius:10px;
+                          padding:1.25rem 1rem; cursor:pointer; background:#fafafa;
+                          transition:all 140ms;"
+                   onmouseover="this.style.borderColor='#7c3aed'; this.style.background='#f5f3ff';"
+                   onmouseout="this.style.borderColor='#d1d5db'; this.style.background='#fafafa';">
+                <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="#7c3aed" stroke-width="1.8" style="margin-bottom:6px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+                </svg>
+                <span id="pdf-label" style="font-size:0.85rem; font-weight:600; color:#475569;">Click to choose a PDF…</span>
+                <span style="font-size:0.74rem; color:#94a3b8; margin-top:3px;">PDF only, max 20 MB</span>
+                <input type="file" name="attachment_pdf" id="manual-pdf" accept="application/pdf" style="display:none;">
+            </label>
+            <p id="pdf-clear" style="display:none; font-size:0.75rem; color:#dc2626; margin-top:6px; cursor:pointer;"
+               onclick="const el=document.getElementById('manual-pdf'); el.value=''; document.getElementById('pdf-label').textContent='Click to choose a PDF…'; this.style.display='none';">
+                ✕ Remove file
+            </p>
+        </div>
+
+        <label class="toggle" style="margin-top:0.5rem; display:inline-flex; align-items:center; gap:8px;">
+            <input type="checkbox" name="attach_pdf" value="1" {{ old('attach_pdf', '1') ? 'checked' : '' }} style="width:17px; height:17px;">
+            <span class="form-label" style="margin:0;">Attach this PDF to every outgoing email</span>
+        </label>
+    </div>
+
+    {{-- 5. Throttle / start --}}
     <div class="step-card">
         <h2>Throttle &amp; launch</h2>
         <p class="hint">Wait time between sends so SMTP accounts don't get rate-limited. The campaign uses your active SMTP rotation.</p>
@@ -268,6 +300,21 @@ document.getElementById('speaker-search')?.addEventListener('input', e => {
 // Make sure the body textarea is filled before submit
 document.getElementById('manual-campaign-form').addEventListener('submit', () => {
     document.getElementById('body-textarea').value = $('#body-editor').summernote('code');
+});
+
+// Show the chosen PDF filename
+document.getElementById('manual-pdf')?.addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    const label = document.getElementById('pdf-label');
+    const clear = document.getElementById('pdf-clear');
+    if (f) {
+        const sizeKb = Math.round(f.size / 1024);
+        label.textContent = f.name + ' (' + sizeKb.toLocaleString() + ' KB)';
+        clear.style.display = '';
+    } else {
+        label.textContent = 'Click to choose a PDF…';
+        clear.style.display = 'none';
+    }
 });
 </script>
 
