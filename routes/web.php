@@ -164,6 +164,7 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::get('replies', [ReplyController::class, 'index'])->name('replies.index');
     Route::get('replies/{reply}', [ReplyController::class, 'show'])->name('replies.show');
     Route::post('replies/fetch', [ReplyController::class, 'fetch'])->name('replies.fetch');
+    Route::get('replies/export', [ReplyController::class, 'export'])->name('replies.export');
     Route::post('replies/{reply}/reclassify', [ReplyController::class, 'reclassify'])->name('replies.reclassify');
     Route::post('replies/{reply}/category', [ReplyController::class, 'changeCategory'])->name('replies.changeCategory');
     Route::post('replies/{reply}/send-reply', [ReplyController::class, 'sendReply'])->name('replies.sendReply');

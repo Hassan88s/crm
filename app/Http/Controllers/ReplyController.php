@@ -363,4 +363,67 @@ class ReplyController extends Controller
 
         return back()->with('success', "Category set to \"{$data['category']}\".");
     }
+
+    /**
+     * Export classified replies to CSV using the same filter as the index.
+     * Streams the response so a list of thousands of rows doesn't blow up
+     * memory.
+     */
+    public function export(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $category   = $request->get('category', 'all');
+        $categories = ['Interested','Confirmed','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'];
+
+        $query = EmailReply::with('speaker')->orderByDesc('received_at');
+        if ($category !== 'all' && in_array($category, $categories, true)) {
+            $query->where('category', $category);
+        }
+
+        $filename = 'classified-replies-' . ($category !== 'all' ? \Illuminate\Support\Str::slug($category) . '-' : '') . now()->format('Ymd-His') . '.csv';
+
+        $headers = [
+            'Content-Type'        => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+            'Cache-Control'       => 'no-store, no-cache',
+            'Pragma'              => 'no-cache',
+        ];
+
+        return response()->stream(function () use ($query) {
+            $out = fopen('php://output', 'w');
+            // BOM so Excel detects UTF-8
+            fwrite($out, "\xEF\xBB\xBF");
+
+            fputcsv($out, [
+                'ID', 'Received At', 'Category', 'AI Score',
+                'From Name', 'From Email', 'Subject',
+                'Speaker Name', 'Speaker Company', 'Speaker Country',
+                'Speaker Email', 'Body Preview',
+            ]);
+
+            $query->chunk(500, function ($rows) use ($out) {
+                foreach ($rows as $r) {
+                    $bodyPreview = trim(preg_replace('/\s+/', ' ', (string) $r->body_plain));
+                    if (mb_strlen($bodyPreview) > 500) {
+                        $bodyPreview = mb_substr($bodyPreview, 0, 500) . '…';
+                    }
+                    fputcsv($out, [
+                        $r->id,
+                        $r->received_at?->format('Y-m-d H:i:s'),
+                        $r->category,
+                        $r->ai_score,
+                        $r->from_name,
+                        $r->from_email,
+                        $r->subject,
+                        $r->speaker?->full_name,
+                        $r->speaker?->company,
+                        $r->speaker?->country,
+                        $r->speaker?->email,
+                        $bodyPreview,
+                    ]);
+                }
+            });
+
+            fclose($out);
+        }, 200, $headers);
+    }
 }

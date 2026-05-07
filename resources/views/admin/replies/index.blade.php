@@ -305,6 +305,27 @@
                 Fetch &amp; Classify Now
             </button>
 
+            @php
+                $exportScope = $category !== 'all' ? $category : null;
+                $exportLabel = $exportScope ? 'Export "' . $exportScope . '" CSV' : 'Export CSV';
+                $exportUrl   = $exportScope
+                    ? route('admin.replies.export', ['category' => $exportScope])
+                    : route('admin.replies.export');
+            @endphp
+            @if(($counts['all'] ?? 0) > 0)
+                <a href="{{ $exportUrl }}"
+                   title="Download CSV of {{ $exportScope ? 'replies in this category' : 'all replies' }}"
+                   style="display:inline-flex; align-items:center; gap:6px;
+                          background:#fff; color:#16a34a; border:1.5px solid #bbf7d0;
+                          padding:0.55rem 1rem; border-radius:9px;
+                          font-size:0.85rem; font-weight:700; text-decoration:none;">
+                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V4m0 8l-4-4m4 4l4-4"/>
+                    </svg>
+                    {{ $exportLabel }}
+                </a>
+            @endif
+
             @if(($counts['all'] ?? 0) > 0)
                 @php
                     $delScope    = $category !== 'all' ? $category : null;
