@@ -30,7 +30,20 @@ class SpeakerController extends Controller
         $eventId = $request->get('event_id');
         $search  = $request->get('search');
         $missing = $request->get('missing'); // e.g. "title", "company", "email", "country", "seniority", "linkedin_url"
+
+        // Reply category filter (any category set on email_replies, plus the
+        // virtual "Bounced" which is matched by parsing bounce notification bodies).
+        $replyCategory = $request->get('reply_category');
+        $allowedReplyCats = ['Confirmed','Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'];
+        if (!in_array($replyCategory, $allowedReplyCats, true)) {
+            $replyCategory = null;
+        }
+
+        // Backward-compat: ?bounced=1 still works (older bookmarks).
         $bouncedOnly = $request->boolean('bounced');
+        if ($bouncedOnly && !$replyCategory) {
+            $replyCategory = 'Bounced';
+        }
 
         $query = Speaker::with('event')->latest();
 
@@ -60,22 +73,57 @@ class SpeakerController extends Controller
         // Build the bounced set ONCE — addresses that ever appeared in a bounce
         $bouncedEmails = \App\Models\EmailReply::bouncedEmailsSet();
 
-        // Optional filter: only speakers whose email has bounced
-        if ($bouncedOnly) {
+        // Apply reply-category filter
+        if ($replyCategory === 'Bounced') {
             $emails = array_keys($bouncedEmails);
             if (empty($emails)) {
-                // Force an empty result set (no bounced speakers possible)
                 $query->whereRaw('1 = 0');
             } else {
                 $query->whereIn(\DB::raw('LOWER(email)'), $emails);
             }
+        } elseif ($replyCategory) {
+            // Speakers who have any email_reply in this category. Match by
+            // speaker_id (set by the classifier) OR by lowercased email
+            // (covers replies imported before speaker matching).
+            $matchingSpeakerIds = \App\Models\EmailReply::where('category', $replyCategory)
+                ->whereNotNull('speaker_id')
+                ->distinct()
+                ->pluck('speaker_id')
+                ->all();
+
+            $matchingEmails = \App\Models\EmailReply::where('category', $replyCategory)
+                ->whereNotNull('from_email')
+                ->where('from_email', '!=', '')
+                ->distinct()
+                ->pluck('from_email')
+                ->map(fn($e) => strtolower($e))
+                ->all();
+
+            $query->where(function ($q) use ($matchingSpeakerIds, $matchingEmails) {
+                if (!empty($matchingSpeakerIds)) {
+                    $q->whereIn('id', $matchingSpeakerIds);
+                }
+                if (!empty($matchingEmails)) {
+                    $q->orWhereIn(\DB::raw('LOWER(email)'), $matchingEmails);
+                }
+                if (empty($matchingSpeakerIds) && empty($matchingEmails)) {
+                    $q->whereRaw('1 = 0');
+                }
+            });
         }
 
         $speakers = $query->paginate(50)->withQueryString();
 
+        // Available reply categories for the dropdown (only those that have rows)
+        $replyCategoryCounts = \App\Models\EmailReply::selectRaw('category, COUNT(*) as c')
+            ->groupBy('category')
+            ->pluck('c', 'category')
+            ->toArray();
+
         return view('admin.speakers.index', compact(
             'speakers', 'events', 'eventId', 'search', 'missing',
-            'bouncedEmails', 'bouncedOnly'
+            'bouncedEmails', 'bouncedOnly', 'replyCategory',
+            'allowedReplyCats', 'replyCategoryCounts'
         ));
     }
 
@@ -85,10 +133,18 @@ class SpeakerController extends Controller
      */
     public function export(Request $request)
     {
-        $eventId      = $request->get('event_id');
-        $search       = $request->get('search');
-        $missing      = $request->get('missing');
-        $bouncedOnly  = $request->boolean('bounced');
+        $eventId       = $request->get('event_id');
+        $search        = $request->get('search');
+        $missing       = $request->get('missing');
+        $bouncedOnly   = $request->boolean('bounced');
+        $replyCategory = $request->get('reply_category');
+        $allowedReplyCats = ['Confirmed','Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'];
+        if (!in_array($replyCategory, $allowedReplyCats, true)) {
+            $replyCategory = null;
+        }
+        if ($bouncedOnly && !$replyCategory) {
+            $replyCategory = 'Bounced';
+        }
 
         $query = Speaker::with('event')->orderBy('first_name')->orderBy('last_name');
 
@@ -116,22 +172,48 @@ class SpeakerController extends Controller
 
         $bouncedEmails = \App\Models\EmailReply::bouncedEmailsSet();
 
-        if ($bouncedOnly) {
+        if ($replyCategory === 'Bounced') {
             $emails = array_keys($bouncedEmails);
             if (empty($emails)) {
                 $query->whereRaw('1 = 0');
             } else {
                 $query->whereIn(\DB::raw('LOWER(email)'), $emails);
             }
+        } elseif ($replyCategory) {
+            $matchingSpeakerIds = \App\Models\EmailReply::where('category', $replyCategory)
+                ->whereNotNull('speaker_id')
+                ->distinct()
+                ->pluck('speaker_id')
+                ->all();
+
+            $matchingEmails = \App\Models\EmailReply::where('category', $replyCategory)
+                ->whereNotNull('from_email')
+                ->where('from_email', '!=', '')
+                ->distinct()
+                ->pluck('from_email')
+                ->map(fn($e) => strtolower($e))
+                ->all();
+
+            $query->where(function ($q) use ($matchingSpeakerIds, $matchingEmails) {
+                if (!empty($matchingSpeakerIds)) {
+                    $q->whereIn('id', $matchingSpeakerIds);
+                }
+                if (!empty($matchingEmails)) {
+                    $q->orWhereIn(\DB::raw('LOWER(email)'), $matchingEmails);
+                }
+                if (empty($matchingSpeakerIds) && empty($matchingEmails)) {
+                    $q->whereRaw('1 = 0');
+                }
+            });
         }
 
         // Build a friendly filename
         $stamp = now()->format('Y-m-d_His');
         $tags  = [];
-        if ($eventId)     $tags[] = 'event-' . $eventId;
-        if ($missing)     $tags[] = 'missing-' . $missing;
-        if ($bouncedOnly) $tags[] = 'bounced';
-        if ($search)      $tags[] = 'search';
+        if ($eventId)        $tags[] = 'event-' . $eventId;
+        if ($missing)        $tags[] = 'missing-' . $missing;
+        if ($replyCategory)  $tags[] = strtolower(\Illuminate\Support\Str::slug($replyCategory));
+        if ($search)         $tags[] = 'search';
         $filename = 'speakers' . (empty($tags) ? '' : '_' . implode('_', $tags)) . '_' . $stamp . '.csv';
 
         $headers = [

@@ -163,10 +163,11 @@
             // Carry every active filter into the export URL so the download
             // always matches what the user is currently looking at.
             $exportParams = array_filter([
-                'event_id' => $eventId,
-                'search'   => $search,
-                'missing'  => $missing,
-                'bounced'  => !empty($bouncedOnly) ? 1 : null,
+                'event_id'       => $eventId,
+                'search'         => $search,
+                'missing'        => $missing,
+                'reply_category' => $replyCategory,
+                'bounced'        => !empty($bouncedOnly) ? 1 : null,
             ], fn($v) => !is_null($v) && $v !== '');
             $hasFilters = !empty($exportParams);
         @endphp
@@ -241,30 +242,57 @@
             <option value="linkedin_url" {{ ($missing ?? '') === 'linkedin_url' ? 'selected' : '' }}>Missing: LinkedIn URL</option>
         </select>
 
-        {{-- Bounced-only toggle (preserves search + event_id + missing via hidden inputs) --}}
-        @php $bouncedActive = !empty($bouncedOnly); @endphp
-        @if($bouncedActive)
-            {{-- Hidden marker so the form submission keeps the filter when changing other dropdowns --}}
-            <input type="hidden" name="bounced" value="1">
-            <a href="{{ route('admin.speakers.index', array_filter(['event_id' => $eventId, 'search' => $search, 'missing' => $missing])) }}"
-               style="display:inline-flex; align-items:center; gap:6px;
-                      padding:0.45rem 0.85rem; border-radius:8px;
-                      background:#f5f3ff; color:#7c3aed; border:1.5px solid #7c3aed33;
-                      font-size:0.78rem; font-weight:700; text-decoration:none; white-space:nowrap;">
-                ↩️ Bounced only ✕
-            </a>
-        @else
-            <a href="{{ route('admin.speakers.index', array_filter(['event_id' => $eventId, 'search' => $search, 'missing' => $missing, 'bounced' => 1])) }}"
-               style="display:inline-flex; align-items:center; gap:6px;
-                      padding:0.45rem 0.85rem; border-radius:8px;
-                      background:#fff; color:#7c3aed; border:1.5px solid #e2e8f0;
-                      font-size:0.78rem; font-weight:600; text-decoration:none; white-space:nowrap;"
-               title="Show only speakers whose email has bounced">
-                ↩️ Bounced only
-            </a>
-        @endif
+        {{-- Reply category filter (Confirmed / Interested / Bounced / No Reply / etc.) --}}
+        @php
+            $catColors = [
+                'Confirmed'      => '#0891b2',
+                'Interested'     => '#16a34a',
+                'Not Interested' => '#64748b',
+                'Info Request'   => '#2563eb',
+                'Out of Office'  => '#ca8a04',
+                'Spam'           => '#dc2626',
+                'Negative'       => '#9f1239',
+                'Manual Review'  => '#94a3b8',
+                'No Reply'       => '#f97316',
+                'Bounced'        => '#7c3aed',
+            ];
+            $catIcons = [
+                'Confirmed'      => '✅',
+                'Interested'     => '🟢',
+                'Not Interested' => '⚫',
+                'Info Request'   => '🔵',
+                'Out of Office'  => '🟡',
+                'Spam'           => '🔴',
+                'Negative'       => '🚫',
+                'Manual Review'  => '⚪',
+                'No Reply'       => '🟠',
+                'Bounced'        => '↩️',
+            ];
+            $activeColor = $replyCategory ? ($catColors[$replyCategory] ?? '#2563eb') : null;
+        @endphp
+        <select name="reply_category" onchange="document.getElementById('search-form').submit()"
+                title="Filter speakers by their classified reply category"
+                style="padding:0.45rem 0.75rem;
+                       border:1.5px solid {{ $replyCategory ? $activeColor.'55' : '#e2e8f0' }};
+                       background:{{ $replyCategory ? $activeColor.'14' : '#fff' }};
+                       color:{{ $replyCategory ? $activeColor : '#0f172a' }};
+                       border-radius:8px; font-size:0.875rem;
+                       font-weight:{{ $replyCategory ? 700 : 500 }};
+                       outline:none; cursor:pointer; font-family:inherit;">
+            <option value="">Reply category — All</option>
+            @foreach($allowedReplyCats as $c)
+                @php
+                    $count = $c === 'Bounced'
+                        ? count($bouncedEmails ?? [])
+                        : (int)($replyCategoryCounts[$c] ?? 0);
+                @endphp
+                <option value="{{ $c }}" {{ $replyCategory === $c ? 'selected' : '' }}>
+                    {{ ($catIcons[$c] ?? '') }} {{ $c }} ({{ $count }})
+                </option>
+            @endforeach
+        </select>
 
-        @if($eventId || $search || !empty($missing) || !empty($bouncedOnly))
+        @if($eventId || $search || !empty($missing) || !empty($replyCategory))
             <a href="{{ route('admin.speakers.index') }}"
                style="font-size:0.78rem; color:#64748b; text-decoration:none; white-space:nowrap; padding:0.4rem 0.5rem;">
                ✕ Clear
