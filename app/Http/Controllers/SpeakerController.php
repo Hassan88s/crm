@@ -45,7 +45,10 @@ class SpeakerController extends Controller
             $replyCategory = 'Bounced';
         }
 
-        $query = Speaker::with('event')->latest();
+        // Alphabetical by first name, then last name (A → Z).
+        $query = Speaker::with('event')
+            ->orderByRaw('LOWER(first_name) ASC')
+            ->orderByRaw('LOWER(last_name) ASC');
 
         if ($eventId) {
             $query->where('event_id', $eventId);
@@ -146,7 +149,9 @@ class SpeakerController extends Controller
             $replyCategory = 'Bounced';
         }
 
-        $query = Speaker::with('event')->orderBy('first_name')->orderBy('last_name');
+        $query = Speaker::with('event')
+            ->orderByRaw('LOWER(first_name) ASC')
+            ->orderByRaw('LOWER(last_name) ASC');
 
         if ($eventId) {
             $query->where('event_id', $eventId);
