@@ -123,24 +123,45 @@ class SpeakerController extends Controller
             ->pluck('c', 'category')
             ->toArray();
 
-        // For each speaker on this page, look up their most recent EmailReply
-        // so we can show it as a pill / dropdown next to the name.
+        // For each speaker on this page, look up the reply we should display
+        // as the pill / dropdown next to their name.
+        //
+        // - If a reply_category filter is active, we show their latest reply
+        //   OF THAT CATEGORY (so a "Confirmed" filter never displays a
+        //   "No Reply" pill, even though both rows exist for the speaker).
+        // - Otherwise we show their absolute latest reply.
+        //
         // Matches by speaker_id first, then falls back to a case-insensitive
         // email match for replies the classifier couldn't bind to a speaker.
         $latestReplyBySpeaker = [];
         if ($speakers->isNotEmpty()) {
             $pageSpeakerIds = $speakers->pluck('id')->all();
-            $pageEmails     = $speakers->pluck('email')->filter()->map(fn($e) => strtolower($e))->all();
+            // The category we want each speaker's pill to reflect.
+            // 'Bounced' has no per-speaker reply rows (it's parsed from body),
+            // so fall through to the absolute-latest logic in that case.
+            $pillCategory = ($replyCategory && $replyCategory !== 'Bounced')
+                ? $replyCategory
+                : null;
 
             // Latest reply rows matched via speaker_id
-            $byId = \App\Models\EmailReply::whereIn('speaker_id', $pageSpeakerIds)
-                ->whereIn('id', function ($q) use ($pageSpeakerIds) {
-                    $q->selectRaw('MAX(id)')
-                      ->from('email_replies')
-                      ->whereIn('speaker_id', $pageSpeakerIds)
-                      ->groupBy('speaker_id');
-                })
-                ->get(['id', 'speaker_id', 'category', 'received_at', 'from_email']);
+            $idQuery = \App\Models\EmailReply::query()
+                ->whereIn('speaker_id', $pageSpeakerIds);
+
+            if ($pillCategory) {
+                $idQuery->where('category', $pillCategory);
+            }
+
+            $idQuery->whereIn('id', function ($q) use ($pageSpeakerIds, $pillCategory) {
+                $sub = $q->selectRaw('MAX(id)')
+                         ->from('email_replies')
+                         ->whereIn('speaker_id', $pageSpeakerIds);
+                if ($pillCategory) {
+                    $sub->where('category', $pillCategory);
+                }
+                $sub->groupBy('speaker_id');
+            });
+
+            $byId = $idQuery->get(['id', 'speaker_id', 'category', 'received_at', 'from_email']);
 
             foreach ($byId as $r) {
                 $latestReplyBySpeaker[$r->speaker_id] = $r;
@@ -155,8 +176,12 @@ class SpeakerController extends Controller
                 }
 
                 $emails = array_keys($emailToSpeakerId);
-                $byEmail = \App\Models\EmailReply::whereIn(\DB::raw('LOWER(from_email)'), $emails)
-                    ->orderByDesc('received_at')
+                $emailQuery = \App\Models\EmailReply::query()
+                    ->whereIn(\DB::raw('LOWER(from_email)'), $emails);
+                if ($pillCategory) {
+                    $emailQuery->where('category', $pillCategory);
+                }
+                $byEmail = $emailQuery->orderByDesc('received_at')
                     ->get(['id', 'speaker_id', 'category', 'received_at', 'from_email']);
 
                 foreach ($byEmail as $r) {
