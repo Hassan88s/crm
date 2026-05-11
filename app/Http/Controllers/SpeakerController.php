@@ -123,10 +123,57 @@ class SpeakerController extends Controller
             ->pluck('c', 'category')
             ->toArray();
 
+        // For each speaker on this page, look up their most recent EmailReply
+        // so we can show it as a pill / dropdown next to the name.
+        // Matches by speaker_id first, then falls back to a case-insensitive
+        // email match for replies the classifier couldn't bind to a speaker.
+        $latestReplyBySpeaker = [];
+        if ($speakers->isNotEmpty()) {
+            $pageSpeakerIds = $speakers->pluck('id')->all();
+            $pageEmails     = $speakers->pluck('email')->filter()->map(fn($e) => strtolower($e))->all();
+
+            // Latest reply rows matched via speaker_id
+            $byId = \App\Models\EmailReply::whereIn('speaker_id', $pageSpeakerIds)
+                ->whereIn('id', function ($q) use ($pageSpeakerIds) {
+                    $q->selectRaw('MAX(id)')
+                      ->from('email_replies')
+                      ->whereIn('speaker_id', $pageSpeakerIds)
+                      ->groupBy('speaker_id');
+                })
+                ->get(['id', 'speaker_id', 'category', 'received_at', 'from_email']);
+
+            foreach ($byId as $r) {
+                $latestReplyBySpeaker[$r->speaker_id] = $r;
+            }
+
+            // Fill in speakers we didn't find via speaker_id, by email match
+            $unboundSpeakers = $speakers->filter(fn($s) => !isset($latestReplyBySpeaker[$s->id]) && $s->email);
+            if ($unboundSpeakers->isNotEmpty()) {
+                $emailToSpeakerId = [];
+                foreach ($unboundSpeakers as $s) {
+                    $emailToSpeakerId[strtolower($s->email)] = $s->id;
+                }
+
+                $emails = array_keys($emailToSpeakerId);
+                $byEmail = \App\Models\EmailReply::whereIn(\DB::raw('LOWER(from_email)'), $emails)
+                    ->orderByDesc('received_at')
+                    ->get(['id', 'speaker_id', 'category', 'received_at', 'from_email']);
+
+                foreach ($byEmail as $r) {
+                    $key = strtolower($r->from_email);
+                    if (!isset($emailToSpeakerId[$key])) continue;
+                    $sid = $emailToSpeakerId[$key];
+                    if (!isset($latestReplyBySpeaker[$sid])) {
+                        $latestReplyBySpeaker[$sid] = $r;
+                    }
+                }
+            }
+        }
+
         return view('admin.speakers.index', compact(
             'speakers', 'events', 'eventId', 'search', 'missing',
             'bouncedEmails', 'bouncedOnly', 'replyCategory',
-            'allowedReplyCats', 'replyCategoryCounts'
+            'allowedReplyCats', 'replyCategoryCounts', 'latestReplyBySpeaker'
         ));
     }
 

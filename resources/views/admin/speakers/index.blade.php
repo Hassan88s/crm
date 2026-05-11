@@ -350,8 +350,47 @@
                                     @php
                                         $isBounced = !empty($bouncedEmails) && $speaker->email
                                                      && isset($bouncedEmails[strtolower($speaker->email)]);
+                                        $latestReply = $latestReplyBySpeaker[$speaker->id] ?? null;
+
+                                        // Per-category style maps (kept in PHP for SSR styling of pill / dropdown)
+                                        $catColorMap = [
+                                            'Confirmed'      => ['fg'=>'#0891b2', 'bg'=>'#ecfeff', 'icon'=>'✅'],
+                                            'Interested'     => ['fg'=>'#16a34a', 'bg'=>'#f0fdf4', 'icon'=>'🟢'],
+                                            'Not Interested' => ['fg'=>'#64748b', 'bg'=>'#f8fafc', 'icon'=>'⚫'],
+                                            'Info Request'   => ['fg'=>'#2563eb', 'bg'=>'#eff6ff', 'icon'=>'🔵'],
+                                            'Out of Office'  => ['fg'=>'#ca8a04', 'bg'=>'#fefce8', 'icon'=>'🟡'],
+                                            'Spam'           => ['fg'=>'#dc2626', 'bg'=>'#fef2f2', 'icon'=>'🔴'],
+                                            'Negative'       => ['fg'=>'#9f1239', 'bg'=>'#fff1f2', 'icon'=>'🚫'],
+                                            'Manual Review'  => ['fg'=>'#94a3b8', 'bg'=>'#f1f5f9', 'icon'=>'⚪'],
+                                            'No Reply'       => ['fg'=>'#f97316', 'bg'=>'#fff7ed', 'icon'=>'🟠'],
+                                            'Bounced'        => ['fg'=>'#7c3aed', 'bg'=>'#f5f3ff', 'icon'=>'↩️'],
+                                        ];
                                     @endphp
-                                    @if($isBounced)
+
+                                    @if($latestReply)
+                                        @php $cs = $catColorMap[$latestReply->category] ?? $catColorMap['Manual Review']; @endphp
+                                        <select class="speaker-cat speaker-cat-{{ $speaker->id }}"
+                                                data-reply-id="{{ $latestReply->id }}"
+                                                data-url="{{ route('admin.replies.changeCategory', $latestReply->id) }}"
+                                                onchange="onSpeakerCategoryChange(this)"
+                                                onclick="event.stopPropagation();"
+                                                title="Change reply category"
+                                                style="background:{{ $cs['bg'] }}; color:{{ $cs['fg'] }};
+                                                       border:1px solid {{ $cs['fg'] }}33;
+                                                       border-radius:999px; padding:1px 18px 1px 8px;
+                                                       font-size:0.65rem; font-weight:700; letter-spacing:0.02em;
+                                                       cursor:pointer; appearance:none; -webkit-appearance:none;
+                                                       background-image:url('data:image/svg+xml;utf8,<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;8&quot; height=&quot;8&quot; viewBox=&quot;0 0 24 24&quot; fill=&quot;none&quot; stroke=&quot;{{ str_replace('#', '%23', $cs['fg']) }}&quot; stroke-width=&quot;3&quot; stroke-linecap=&quot;round&quot;><path d=&quot;M6 9l6 6 6-6&quot;/></svg>');
+                                                       background-repeat:no-repeat; background-position:right 5px center;">
+                                            @foreach(['Confirmed','Interested','Not Interested','Info Request','Out of Office','Spam','Negative','Manual Review','No Reply','Bounced'] as $cOpt)
+                                                <option value="{{ $cOpt }}" {{ $latestReply->category === $cOpt ? 'selected' : '' }}>
+                                                    {{ ($catColorMap[$cOpt]['icon'] ?? '') }} {{ $cOpt }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    @endif
+
+                                    @if($isBounced && (!$latestReply || $latestReply->category !== 'Bounced'))
                                         <span title="This speaker's email has bounced"
                                               style="display:inline-flex; align-items:center; gap:3px;
                                                      background:#f5f3ff; color:#7c3aed; border:1px solid #7c3aed33;
@@ -701,6 +740,53 @@ async function findLinkedIn(id, url, name, existingUrl) {
         btn.disabled = false;
         btn.innerHTML = origHTML;
     }
+}
+
+// ── Inline speaker reply-category change ─────────────────────────────────────
+function onSpeakerCategoryChange(sel) {
+    const url = sel.dataset.url;
+    const cat = sel.value;
+    const colors = {
+        'Confirmed':      { fg:'#0891b2', bg:'#ecfeff' },
+        'Interested':     { fg:'#16a34a', bg:'#f0fdf4' },
+        'Not Interested': { fg:'#64748b', bg:'#f8fafc' },
+        'Info Request':   { fg:'#2563eb', bg:'#eff6ff' },
+        'Out of Office':  { fg:'#ca8a04', bg:'#fefce8' },
+        'Spam':           { fg:'#dc2626', bg:'#fef2f2' },
+        'Negative':       { fg:'#9f1239', bg:'#fff1f2' },
+        'Manual Review':  { fg:'#94a3b8', bg:'#f1f5f9' },
+        'No Reply':       { fg:'#f97316', bg:'#fff7ed' },
+        'Bounced':        { fg:'#7c3aed', bg:'#f5f3ff' },
+    };
+    sel.disabled = true;
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': CSRF_TOKEN,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ category: cat }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.ok) throw new Error(data.message || data.error || 'Failed');
+        const c = colors[cat] || colors['Manual Review'];
+        sel.style.background = c.bg;
+        sel.style.color = c.fg;
+        sel.style.borderColor = c.fg + '33';
+        sel.style.backgroundImage =
+            'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'8\' height=\'8\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'' +
+            encodeURIComponent(c.fg) + '\' stroke-width=\'3\' stroke-linecap=\'round\'><path d=\'M6 9l6 6 6-6\'/></svg>")';
+        sel.style.backgroundRepeat = 'no-repeat';
+        sel.style.backgroundPosition = 'right 5px center';
+        showVerifyToast(null, null, null, null, '✓ Reply set to ' + cat);
+    })
+    .catch(e => {
+        showVerifyToast(null, null, null, 'Failed to update: ' + e.message, null);
+    })
+    .finally(() => { sel.disabled = false; });
 }
 </script>
 @endsection
