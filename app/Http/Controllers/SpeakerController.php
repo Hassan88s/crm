@@ -301,23 +301,114 @@ class SpeakerController extends Controller
             'Expires'             => '0',
         ];
 
+        // When a category filter is active (and not the parsed-from-body
+        // 'Bounced'), the per-speaker reply we include in the CSV is the
+        // latest reply OF THAT CATEGORY. Without a filter, it's the absolute
+        // latest reply (any category).
+        $pillCategory = ($replyCategory && $replyCategory !== 'Bounced')
+            ? $replyCategory
+            : null;
+
+        // Column labels reflect what's being shown
+        $replyColLabel = $pillCategory
+            ? "{$pillCategory} Reply"
+            : 'Latest Reply';
+
         $columns = [
             'First Name', 'Last Name', 'Title', 'Company',
             'Email', 'LinkedIn URL', 'Seniority', 'Country',
             'Event', 'Bounced', 'Created At',
+            'Reply Category',
+            $replyColLabel . ' Subject',
+            $replyColLabel . ' Date',
+            $replyColLabel . ' Body',
         ];
 
-        return response()->stream(function () use ($query, $columns, $bouncedEmails) {
+        return response()->stream(function () use ($query, $columns, $bouncedEmails, $pillCategory) {
             $out = fopen('php://output', 'w');
 
             // UTF-8 BOM so Excel opens the file with proper accents
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, $columns);
 
-            $query->chunkById(500, function ($rows) use ($out, $bouncedEmails) {
+            $query->chunkById(500, function ($rows) use ($out, $bouncedEmails, $pillCategory) {
+                // Look up the latest reply (optionally scoped to a category)
+                // for every speaker in this chunk, in one round-trip.
+                $chunkSpeakerIds = $rows->pluck('id')->all();
+                $chunkEmails     = $rows->pluck('email')
+                    ->filter()
+                    ->map(fn($e) => strtolower($e))
+                    ->all();
+
+                $replyById = [];
+                if (!empty($chunkSpeakerIds)) {
+                    $idQuery = \App\Models\EmailReply::query()
+                        ->whereIn('speaker_id', $chunkSpeakerIds);
+                    if ($pillCategory) {
+                        $idQuery->where('category', $pillCategory);
+                    }
+                    $idQuery->whereIn('id', function ($q) use ($chunkSpeakerIds, $pillCategory) {
+                        $sub = $q->selectRaw('MAX(id)')
+                                 ->from('email_replies')
+                                 ->whereIn('speaker_id', $chunkSpeakerIds);
+                        if ($pillCategory) {
+                            $sub->where('category', $pillCategory);
+                        }
+                        $sub->groupBy('speaker_id');
+                    });
+                    foreach ($idQuery->get(['id','speaker_id','category','subject','body_plain','received_at','from_email']) as $r) {
+                        $replyById[$r->speaker_id] = $r;
+                    }
+                }
+
+                // Fill in speakers we didn't bind via speaker_id, via email match
+                $replyByEmail = [];
+                $unboundEmails = [];
                 foreach ($rows as $s) {
-                    $emailLc = strtolower((string) $s->email);
+                    if (!isset($replyById[$s->id]) && $s->email) {
+                        $unboundEmails[strtolower($s->email)] = $s->id;
+                    }
+                }
+                if (!empty($unboundEmails)) {
+                    $emailQuery = \App\Models\EmailReply::query()
+                        ->whereIn(\DB::raw('LOWER(from_email)'), array_keys($unboundEmails));
+                    if ($pillCategory) {
+                        $emailQuery->where('category', $pillCategory);
+                    }
+                    $rowsForEmail = $emailQuery->orderByDesc('received_at')
+                        ->get(['id','speaker_id','category','subject','body_plain','received_at','from_email']);
+                    foreach ($rowsForEmail as $r) {
+                        $key = strtolower($r->from_email);
+                        if (!isset($replyByEmail[$key])) {
+                            $replyByEmail[$key] = $r;
+                        }
+                    }
+                }
+
+                foreach ($rows as $s) {
+                    $emailLc   = strtolower((string) $s->email);
                     $isBounced = $emailLc !== '' && isset($bouncedEmails[$emailLc]) ? 'Yes' : '';
+
+                    // Pull the reply: id-bound first, then email-bound, else null
+                    $reply = $replyById[$s->id]
+                        ?? ($emailLc !== '' ? ($replyByEmail[$emailLc] ?? null) : null);
+
+                    $rCategory = '';
+                    $rSubject  = '';
+                    $rDate     = '';
+                    $rBody     = '';
+                    if ($reply) {
+                        $rCategory = (string) $reply->category;
+                        $rSubject  = (string) $reply->subject;
+                        $rDate     = $reply->received_at?->format('Y-m-d H:i');
+
+                        // Clean body for CSV: collapse whitespace, cap to 5000 chars
+                        $body = trim(preg_replace('/\s+/', ' ', (string) $reply->body_plain));
+                        if (mb_strlen($body) > 5000) {
+                            $body = mb_substr($body, 0, 5000) . '…';
+                        }
+                        $rBody = $body;
+                    }
 
                     fputcsv($out, [
                         $s->first_name,
@@ -331,6 +422,10 @@ class SpeakerController extends Controller
                         $s->event?->name,
                         $isBounced,
                         $s->created_at?->format('Y-m-d H:i'),
+                        $rCategory,
+                        $rSubject,
+                        $rDate,
+                        $rBody,
                     ]);
                 }
             });
