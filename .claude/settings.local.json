@@ -60,7 +60,21 @@
       "Bash(git credential-manager:*)",
       "Bash(curl -s -H \"Accept: application/vnd.github.v3+json\" https://api.github.com/repos/Hassan88s/crm/actions/runs?per_page=1)",
       "Bash(git reset *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__tabs_create_mcp",
+      "mcp__Claude_in_Chrome__computer",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" -A \"Mozilla/5.0\" http://127.0.0.1:8000/admin/speakers/import)",
+      "Bash(php -l app/Http/Controllers/CampaignController.php)",
+      "Bash(php -l app/Services/CampaignSender.php)",
+      "Bash(php -l app/Console/Commands/ProcessCampaigns.php)",
+      "Bash(php -l app/Models/Campaign.php)",
+      "Bash(php -l app/Models/CampaignRecipient.php)",
+      "Bash(php -l app/Support/Charset.php)",
+      "Bash(php -l app/Console/Commands/ClassifyEmailReplies.php)",
+      "Bash(php -l app/Models/EmailReply.php)",
+      "Bash(git add *)"
     ]
   }
 }

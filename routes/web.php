@@ -153,6 +153,11 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::post('settings/openai', [SettingsController::class, 'updateOpenAI'])->name('settings.openai');
     Route::get('settings/openai/usage', [SettingsController::class, 'checkOpenAIUsage'])->name('settings.openai.usage');
 
+    // Settings - API Keys (for external agents to call /api/v1/*)
+    Route::post  ('settings/api-keys',              [SettingsController::class, 'storeApiKey'])->name('settings.apiKeys.store');
+    Route::post  ('settings/api-keys/{apiKey}/revoke', [SettingsController::class, 'revokeApiKey'])->name('settings.apiKeys.revoke');
+    Route::delete('settings/api-keys/{apiKey}',     [SettingsController::class, 'destroyApiKey'])->name('settings.apiKeys.destroy');
+
     // System Requirements
     Route::get('requirements', [RequirementsController::class, 'index'])->name('requirements');
 

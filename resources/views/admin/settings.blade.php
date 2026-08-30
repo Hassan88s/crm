@@ -110,6 +110,12 @@
             </svg>
             Password
         </a>
+        <a href="#api-keys" class="settings-nav-item" onclick="scrollTo('#api-keys',this)">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a4 4 0 11-4 4m4-4a4 4 0 00-4 4m4-4V3m-4 8H3m8 0v10"/>
+            </svg>
+            API Keys
+        </a>
     </div>
 
     {{-- Forms --}}
@@ -599,6 +605,99 @@
                         <button type="submit" class="btn">Update Password</button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        {{-- ── API Keys ── --}}
+        <div class="settings-section" id="api-keys">
+            <div class="section-head">
+                <h3>API Keys</h3>
+                <p>Tokens for external agents to call <code>/api/v1/*</code>. Send as <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+            </div>
+            <div class="section-body">
+                @if(session('success_apikeys'))
+                    <div class="alert alert-success">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        {{ session('success_apikeys') }}
+                    </div>
+                @endif
+
+                @if(!empty($newApiKey))
+                    <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:10px;padding:0.85rem 1rem;margin-bottom:1rem;">
+                        <div style="font-size:0.8rem;font-weight:600;color:#92400e;margin-bottom:6px;">⚠ Copy your new API token — this is the only time it will be shown:</div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <input id="new-api-token" type="text" readonly value="{{ $newApiKey }}"
+                                   class="form-input" style="font-family:ui-monospace,SFMono-Regular,monospace;font-size:0.82rem;">
+                            <button type="button" class="btn" onclick="navigator.clipboard.writeText(document.getElementById('new-api-token').value); this.textContent='Copied ✓';">Copy</button>
+                        </div>
+                    </div>
+                @endif
+
+                <form action="{{ route('admin.settings.apiKeys.store') }}" method="POST" style="margin-bottom:1.25rem;">
+                    @csrf
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Key name</label>
+                            <input type="text" name="name" class="form-input" placeholder="e.g. Zapier agent, LangChain bot" required>
+                            <span class="form-hint">A label so you can identify this key later.</span>
+                        </div>
+                        <div class="form-group" style="justify-content:flex-end;">
+                            <button type="submit" class="btn">＋ Generate new API key</button>
+                        </div>
+                    </div>
+                </form>
+
+                <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+                    <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                        <thead style="background:#f8fafc;">
+                            <tr>
+                                <th style="text-align:left;padding:0.6rem 0.9rem;">Name</th>
+                                <th style="text-align:left;padding:0.6rem 0.9rem;">Prefix</th>
+                                <th style="text-align:left;padding:0.6rem 0.9rem;">Last used</th>
+                                <th style="text-align:left;padding:0.6rem 0.9rem;">Status</th>
+                                <th style="text-align:right;padding:0.6rem 0.9rem;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($apiKeys as $k)
+                                <tr style="border-top:1px solid #f1f5f9;">
+                                    <td style="padding:0.6rem 0.9rem;font-weight:600;color:#0f172a;">{{ $k->name }}</td>
+                                    <td style="padding:0.6rem 0.9rem;font-family:ui-monospace,monospace;color:#64748b;">{{ $k->token_prefix }}…</td>
+                                    <td style="padding:0.6rem 0.9rem;color:#64748b;">{{ $k->last_used_at?->diffForHumans() ?? 'Never' }}</td>
+                                    <td style="padding:0.6rem 0.9rem;">
+                                        @if($k->revoked_at)
+                                            <span style="background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:999px;font-size:0.72rem;font-weight:600;">Revoked</span>
+                                        @else
+                                            <span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:999px;font-size:0.72rem;font-weight:600;">Active</span>
+                                        @endif
+                                    </td>
+                                    <td style="padding:0.6rem 0.9rem;text-align:right;white-space:nowrap;">
+                                        @if(!$k->revoked_at)
+                                            <form action="{{ route('admin.settings.apiKeys.revoke', $k) }}" method="POST" style="display:inline;"
+                                                  onsubmit="return confirm('Revoke this API key? Agents using it will stop working.');">
+                                                @csrf
+                                                <button type="submit" class="btn" style="background:#f59e0b;padding:4px 10px;font-size:0.75rem;">Revoke</button>
+                                            </form>
+                                        @endif
+                                        <form action="{{ route('admin.settings.apiKeys.destroy', $k) }}" method="POST" style="display:inline;"
+                                              onsubmit="return confirm('Delete this API key permanently?');">
+                                            @csrf @method('DELETE')
+                                            <button type="submit" class="btn" style="background:#ef4444;padding:4px 10px;font-size:0.75rem;">Delete</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="5" style="padding:1.5rem;text-align:center;color:#94a3b8;">No API keys yet. Generate one above.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top:1rem;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:0.85rem 1rem;font-size:0.8rem;color:#475569;">
+                    <div style="font-weight:600;color:#0f172a;margin-bottom:4px;">Quick start</div>
+                    <pre style="margin:0;font-family:ui-monospace,monospace;font-size:0.75rem;overflow-x:auto;">curl {{ url('/api/v1/stats') }} \
+  -H "Authorization: Bearer YOUR_TOKEN"</pre>
+                </div>
             </div>
         </div>
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ApiKey;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -40,7 +41,32 @@ class SettingsController extends Controller
             'imapEncryption'   => $envValues['IMAP_ENCRYPTION']   ?? 'ssl',
             'openaiApiKey'     => $envValues['OPENAI_API_KEY']    ?? '',
             'apolloApiKey'     => $envValues['APOLLO_API_KEY']    ?? '',
+            'apiKeys'          => ApiKey::orderByDesc('id')->get(),
+            'newApiKey'        => session('new_api_key'),
         ]);
+    }
+
+    public function storeApiKey(Request $request)
+    {
+        $data = $request->validate([
+            'name' => 'required|string|max:100',
+        ]);
+        [, $plain] = ApiKey::generate($data['name']);
+        return back()
+            ->with('success_apikeys', 'API key created. Copy it now — you will not see it again.')
+            ->with('new_api_key', $plain);
+    }
+
+    public function revokeApiKey(ApiKey $apiKey)
+    {
+        $apiKey->update(['revoked_at' => now()]);
+        return back()->with('success_apikeys', 'API key revoked.');
+    }
+
+    public function destroyApiKey(ApiKey $apiKey)
+    {
+        $apiKey->delete();
+        return back()->with('success_apikeys', 'API key deleted.');
     }
 
     public function updateGeneral(Request $request)
