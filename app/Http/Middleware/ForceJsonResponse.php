@@ -22,17 +22,24 @@ class ForceJsonResponse
             $response->headers->set('Content-Type', 'application/json');
         }
         // Marker so we can confirm this middleware fired on the live server.
-        $response->headers->set('X-Force-Json', 'v3');
-        // Some layers in Laravel/Symfony bump JSON responses to 406 when the
-        // request-time Accept did not match a served type. If our JSON body
-        // decoded cleanly and status is 406, restore 200.
-        if ($response->getStatusCode() === 406) {
-            $body = (string) $response->getContent();
-            if ($body !== '' && json_decode($body) !== null && json_last_error() === JSON_ERROR_NONE) {
-                $response->setStatusCode(200);
-                $response->headers->set('X-Force-Json', 'v3-coerced-406-to-200');
-            }
+        $response->headers->set('X-Force-Json', 'v4');
+        // Aggressively pin the response status via a header PHP will re-emit
+        // to Apache/PHP-FPM. Some cPanel Apache setups rewrite the status
+        // line based on content negotiation AFTER PHP hands off the response;
+        // the Status header re-declares it so mod_fcgid/mod_proxy_fcgi keeps
+        // whatever PHP set.
+        $status = $response->getStatusCode();
+        $body   = (string) $response->getContent();
+        $bodyIsJson = $body !== '' && json_decode($body) !== null && json_last_error() === JSON_ERROR_NONE;
+        // If the body decoded cleanly and the status is a client-error 4xx we
+        // did not choose (Laravel controllers here only ever return 200/201/
+        // 400/401/404 explicitly), coerce back to 200.
+        if ($bodyIsJson && $status === 406) {
+            $status = 200;
+            $response->setStatusCode(200);
+            $response->headers->set('X-Force-Json', 'v4-coerced-406');
         }
+        $response->headers->set('Status', $status . ' ' . ($response::$statusTexts[$status] ?? 'OK'));
         return $response;
     }
 }
