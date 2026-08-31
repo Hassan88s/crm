@@ -1,3 +1,8 @@
+# Disable Apache content negotiation entirely so the server can't 406 our
+# JSON responses (cPanel sometimes ignores Options overrides inside IfModule
+# guards, so we set it unconditionally too).
+Options -MultiViews -Indexes
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes
@@ -12,6 +17,11 @@
     # Handle X-XSRF-Token Header
     RewriteCond %{HTTP:x-xsrf-token} .
     RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
+
+    # API traffic goes straight to the Laravel front controller. The END flag
+    # prevents Apache from re-checking rewrites and disables content
+    # negotiation for these paths on servers that ignore Options overrides.
+    RewriteRule ^api(/.*)?$ index.php [L,END,QSA]
 
     # Redirect Trailing Slashes If Not A Folder...
     RewriteCond %{REQUEST_FILENAME} !-d
