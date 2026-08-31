@@ -3,6 +3,8 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api;
 
+Route::middleware(\App\Http\Middleware\ForceJsonResponse::class)->group(function () {
+
 Route::get('/health', fn () => response()->json(['ok' => true, 'ts' => now()->toIso8601String()]));
 
 Route::middleware('api.auth')->prefix('v1')->group(function () {
@@ -85,3 +87,5 @@ Route::middleware('api.auth')->prefix('v1')->group(function () {
     Route::post('/scraper/discover', [Api\ScraperController::class, 'discover']);
     Route::post('/scraper/import',   [Api\ScraperController::class, 'import']);
 });
+
+}); // end ForceJsonResponse group
