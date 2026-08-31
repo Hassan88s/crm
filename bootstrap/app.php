@@ -17,6 +17,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin'    => \App\Http\Middleware\AdminMiddleware::class,
             'api.auth' => \App\Http\Middleware\ApiAuth::class,
         ]);
+        // Force JSON responses on /api/* so agents don't need to send an Accept header.
+        $middleware->prependToGroup('api', \App\Http\Middleware\ForceJsonResponse::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
