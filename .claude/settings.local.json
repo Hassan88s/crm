@@ -74,7 +74,26 @@
       "Bash(php -l app/Support/Charset.php)",
       "Bash(php -l app/Console/Commands/ClassifyEmailReplies.php)",
       "Bash(php -l app/Models/EmailReply.php)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m '@ *)",
+      "Bash(git push *)",
+      "Bash(python -c \"import mcp, anthropic, httpx, pytest\")",
+      "Bash(python -m venv .venv)",
+      "Bash(.venv/Scripts/python.exe -m pip install --quiet --upgrade pip)",
+      "Bash(.venv/Scripts/python.exe -m pip install --quiet -e \".[test]\")",
+      "Bash(.venv/Scripts/python.exe -m pytest -q)",
+      "Bash(.venv/Scripts/python.exe -m pip install --quiet -r ../mcp-server/requirements.txt)",
+      "Bash(.venv/Scripts/python.exe \"C:/Users/dell/AppData/Local/Temp/claude/C--Users-dell-crm/90fb755b-aed1-4ffb-ac6a-d47099ad4593/scratchpad/dryrun_demo.py\")",
+      "Bash(.venv/Scripts/python.exe -m pip install --quiet \"mcp>=1.2.0,<2\")",
+      "Bash(curl -sI https://api.github.com/repos/Hassan88s/crm)",
+      "Bash(curl -sI https://raw.githubusercontent.com/Hassan88s/crm/main/mcp-server/pulsecore_mcp.py)",
+      "Bash(grep -iE \"\\\\.env$|secret|credential|apikey\")",
+      "Bash(git check-ignore *)",
+      "Bash(grep -rE \"sk-[a-z]{2,4}-[A-Za-z0-9]{20,}|pk_[A-Za-z0-9]{30,}\" --include=\"*.php\" --include=\"*.py\" --include=\"*.md\" --include=\"*.yml\" -l)",
+      "Bash(gh run *)",
+      "Bash(curl -s \"https://api.github.com/repos/Hassan88s/crm/actions/runs?per_page=5\")",
+      "Bash(python -c \"import sys,json; runs=json.load\\(sys.stdin\\)['workflow_runs']; [print\\(f\\\\\"{r['head_sha'][:7]} {r['status']:12} {r['conclusion'] or '':10} {r['display_title'][:60]} {r['updated_at']}\\\\\"\\) for r in runs]\")",
+      "Bash(php -l routes/api.php)"
     ]
   }
 }
