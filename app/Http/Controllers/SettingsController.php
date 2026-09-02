@@ -22,6 +22,8 @@ class SettingsController extends Controller
             'IMAP_PASSWORD', 'IMAP_ENCRYPTION',
             'OPENAI_API_KEY',
             'APOLLO_API_KEY',
+            'HERMES_API_URL',
+            'HERMES_API_KEY',
         ]);
 
         return view('admin.settings', [
@@ -41,9 +43,41 @@ class SettingsController extends Controller
             'imapEncryption'   => $envValues['IMAP_ENCRYPTION']   ?? 'ssl',
             'openaiApiKey'     => $envValues['OPENAI_API_KEY']    ?? '',
             'apolloApiKey'     => $envValues['APOLLO_API_KEY']    ?? '',
+            'hermesApiUrl'     => $envValues['HERMES_API_URL']    ?? '',
+            'hermesApiKey'     => $envValues['HERMES_API_KEY']    ?? '',
             'apiKeys'          => ApiKey::orderByDesc('id')->get(),
             'newApiKey'        => session('new_api_key'),
         ]);
+    }
+
+    public function updateHermes(Request $request)
+    {
+        $data = $request->validate([
+            'hermes_api_url' => 'nullable|url|max:255',
+            'hermes_api_key' => 'nullable|string|max:255',
+        ]);
+        $this->setEnv('HERMES_API_URL', $data['hermes_api_url'] ?? '');
+        $this->setEnv('HERMES_API_KEY', $data['hermes_api_key'] ?? '');
+        \Artisan::call('config:clear');
+        return back()->with('success_hermes', 'Hermes settings saved.');
+    }
+
+    public function testHermes(Request $request)
+    {
+        $url = rtrim($request->input('hermes_api_url') ?: env('HERMES_API_URL', ''), '/');
+        $key = $request->input('hermes_api_key') ?: env('HERMES_API_KEY', '');
+        if (!$url || !$key) {
+            return response()->json(['ok' => false, 'error' => 'URL and key required.'], 422);
+        }
+        try {
+            $resp = \Illuminate\Support\Facades\Http::timeout(15)->get($url . '/health');
+            if (!$resp->ok()) {
+                return response()->json(['ok' => false, 'error' => 'HTTP ' . $resp->status()], 502);
+            }
+            return response()->json(['ok' => true, 'details' => $resp->json()]);
+        } catch (\Throwable $e) {
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 502);
+        }
     }
 
     public function storeApiKey(Request $request)

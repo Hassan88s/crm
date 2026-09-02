@@ -116,6 +116,10 @@
             </svg>
             API Keys
         </a>
+        <a href="#hermes" class="settings-nav-item" onclick="scrollTo('#hermes',this)">
+            <span style="width:16px;text-align:center;">🤖</span>
+            Hermes Agent
+        </a>
     </div>
 
     {{-- Forms --}}
@@ -701,8 +705,86 @@
             </div>
         </div>
 
+        {{-- ── Hermes Agent ── --}}
+        <div class="settings-section" id="hermes">
+            <div class="section-head">
+                <h3>🤖 Hermes Agent</h3>
+                <p>URL + bearer token of your local Hermes (Nous Research) agent. The "Ask Hermes" button on the Speakers page uses these.</p>
+            </div>
+            <div class="section-body">
+                @if(session('success_hermes'))
+                    <div class="alert alert-success">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        {{ session('success_hermes') }}
+                    </div>
+                @endif
+
+                <form action="{{ route('admin.settings.hermes') }}" method="POST">
+                    @csrf
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Hermes API URL</label>
+                            <input type="url" name="hermes_api_url" id="hermes-url-input"
+                                   value="{{ $hermesApiUrl }}"
+                                   class="form-input" placeholder="http://your-server-ip:8788">
+                            <span class="form-hint">Where hermes_api.py is listening. No trailing slash.</span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Hermes API Key</label>
+                            <div class="input-wrap">
+                                <input type="password" name="hermes_api_key" id="hermes-key-input"
+                                       value="{{ $hermesApiKey }}"
+                                       class="form-input" placeholder="printed by hermes_api.py on first launch">
+                                <button type="button" class="eye-btn" onclick="togglePwd('hermes-key-input','hermes-eye')">
+                                    <svg id="hermes-eye" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                </button>
+                            </div>
+                            <span class="form-hint">Sent as <code>Authorization: Bearer …</code>. Never displayed in the UI after save.</span>
+                        </div>
+                    </div>
+
+                    <div class="form-footer">
+                        <button type="submit" class="btn">Save Hermes Settings</button>
+                        <button type="button" class="btn" style="background:#7c3aed;" onclick="testHermes()">Test Connection</button>
+                        <span id="hermes-test-result" style="font-size:0.85rem; margin-left:auto;"></span>
+                    </div>
+                </form>
+
+                <div style="margin-top:1rem;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:0.85rem 1rem;font-size:0.8rem;color:#475569;">
+                    <div style="font-weight:600;color:#0f172a;margin-bottom:4px;">Setup on the Hermes server</div>
+                    <pre style="margin:0;font-family:ui-monospace,monospace;font-size:0.75rem;overflow-x:auto;">cd /root/workspace/hermes-crm
+./.venv/bin/pip install fastapi 'uvicorn[standard]'
+./.venv/bin/python hermes_api.py
+# copy the printed key into the field above</pre>
+                </div>
+            </div>
+        </div>
+
     </div>{{-- end forms --}}
 </div>
+
+<script>
+async function testHermes() {
+    const url = document.getElementById('hermes-url-input').value.trim();
+    const key = document.getElementById('hermes-key-input').value.trim();
+    const out = document.getElementById('hermes-test-result');
+    if (!url || !key) { out.innerHTML = '<span style="color:#dc2626;">URL and key required.</span>'; return; }
+    out.innerHTML = 'Testing…';
+    try {
+        const r = await fetch('{{ route("admin.settings.hermes.test") }}', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hermes_api_url: url, hermes_api_key: key }),
+        });
+        const d = await r.json();
+        out.innerHTML = d.ok
+            ? '<span style="color:#16a34a;font-weight:600;">✓ Reachable</span>'
+            : `<span style="color:#dc2626;">✗ ${d.error || 'Failed'}</span>`;
+    } catch (e) {
+        out.innerHTML = `<span style="color:#dc2626;">✗ ${e.message}</span>`;
+    }
+}
+</script>
 
 <script>
 function togglePwd(inputId, iconId) {

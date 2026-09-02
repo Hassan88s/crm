@@ -85,6 +85,7 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::delete('speakers/{speaker}', [SpeakerController::class, 'destroy'])->name('speakers.destroy');
     Route::post('speakers/{speaker}/verify', [SpeakerController::class, 'verifyProfile'])->name('speakers.verify');
     Route::post('speakers/{speaker}/find-linkedin', [SpeakerController::class, 'findLinkedIn'])->name('speakers.findLinkedIn');
+    Route::post('speakers/{speaker}/ask-hermes', [SpeakerController::class, 'askHermes'])->name('speakers.askHermes');
 
     // Settings
     Route::get('settings', [SettingsController::class, 'index'])->name('settings');
@@ -157,6 +158,10 @@ Route::middleware([App\Http\Middleware\AdminMiddleware::class])->prefix('admin')
     Route::post  ('settings/api-keys',              [SettingsController::class, 'storeApiKey'])->name('settings.apiKeys.store');
     Route::post  ('settings/api-keys/{apiKey}/revoke', [SettingsController::class, 'revokeApiKey'])->name('settings.apiKeys.revoke');
     Route::delete('settings/api-keys/{apiKey}',     [SettingsController::class, 'destroyApiKey'])->name('settings.apiKeys.destroy');
+
+    // Settings - Hermes agent (local Nous Research LLM endpoint)
+    Route::post('settings/hermes',      [SettingsController::class, 'updateHermes'])->name('settings.hermes');
+    Route::post('settings/hermes/test', [SettingsController::class, 'testHermes'])->name('settings.hermes.test');
 
     // System Requirements
     Route::get('requirements', [RequirementsController::class, 'index'])->name('requirements');

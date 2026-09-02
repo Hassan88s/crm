@@ -6,6 +6,7 @@ use App\Models\Event;
 use App\Models\Speaker;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -749,6 +750,109 @@ PROMPT;
             'changes'    => $result['changes'] ?? [],
             'confidence' => $result['confidence'] ?? 'unknown',
             'summary'    => $result['summary'] ?? 'Verification complete.',
+            'speaker'    => [
+                'title'        => $speaker->title,
+                'company'      => $speaker->company,
+                'seniority'    => $speaker->seniority,
+                'country'      => $speaker->country,
+                'linkedin_url' => $speaker->linkedin_url,
+            ],
+        ]);
+    }
+
+    // ── Ask Hermes (local Nous Research agent) to verify a speaker ──────
+    //
+    // Delegates to the Hermes agent's HTTP wrapper (hermes_api.py). The agent
+    // uses its own MCP tools (get_speaker, update_speaker) to persist any
+    // improvements it infers, so the CRM just triggers + reports.
+    //
+    // Env required (set in .env or Settings → Hermes):
+    //   HERMES_API_URL   e.g. http://1.2.3.4:8788
+    //   HERMES_API_KEY   the bearer token printed by hermes_api.py on startup
+    //
+    public function askHermes(Request $request, Speaker $speaker)
+    {
+        $env  = (new SettingsController)->readEnvValues(['HERMES_API_URL', 'HERMES_API_KEY']);
+        $url  = rtrim($env['HERMES_API_URL'] ?? env('HERMES_API_URL', ''), '/');
+        $key  = $env['HERMES_API_KEY'] ?? env('HERMES_API_KEY', '');
+
+        if (!$url || !$key) {
+            return response()->json([
+                'error' => 'Hermes is not configured. Set HERMES_API_URL and HERMES_API_KEY in Settings → Hermes.'
+            ], 422);
+        }
+
+        // Snapshot fields BEFORE so we can diff after Hermes writes via MCP.
+        $before = [
+            'title'        => $speaker->title,
+            'company'      => $speaker->company,
+            'seniority'    => $speaker->seniority,
+            'country'      => $speaker->country,
+            'linkedin_url' => $speaker->linkedin_url,
+        ];
+
+        $task = "Verify and enrich the speaker whose id is {$speaker->id} using ONLY MCP tools. "
+              . "Workflow: (1) call get_speaker with speaker_id={$speaker->id} to read the current row. "
+              . "(2) Inspect first_name, last_name, email, title, company, seniority, country, linkedin_url. "
+              . "(3) Infer safe corrections you can make WITHOUT external web access: "
+              . "country from email TLD (.co.uk=UK, .de=Germany, .no=Norway, .fr=France, .ae=UAE, "
+              . ".nl=Netherlands, .be=Belgium, .ch=Switzerland, .es=Spain, .it=Italy, .se=Sweden, "
+              . ".dk=Denmark, .fi=Finland, .at=Austria, .pl=Poland, .cz=Czech Republic, .in=India, "
+              . ".sg=Singapore, .au=Australia, .ca=Canada, .br=Brazil, .za=South Africa); "
+              . "company from a corporate email domain when the company field is empty; "
+              . "normalize seniority to one of: C suite, VP, Director, Head, Manager, Lead, Senior, "
+              . "Principal, Specialist; align seniority when title contains 'Chief/CEO/CFO/CTO' -> "
+              . "'C suite', 'Vice President/SVP/EVP' -> 'VP', 'Director' -> 'Director', 'Head of' -> "
+              . "'Head'. (4) If any of those inferences produce a value different from what is stored, "
+              . "call update_speaker with speaker_id={$speaker->id} and ONLY the fields that changed. "
+              . "(5) Skip fields where you have no confident inference; do not guess. "
+              . "(6) Return a short Markdown summary: which fields you updated (old -> new) and why, "
+              . "or 'no changes needed' with a one-line reason.";
+
+        try {
+            $resp = Http::withToken($key)
+                ->acceptJson()
+                ->timeout(180)
+                ->post($url . '/run', [
+                    'task'    => $task,
+                    'dry_run' => false,
+                ]);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'Hermes unreachable: ' . $e->getMessage()], 502);
+        }
+
+        if (!$resp->ok()) {
+            return response()->json([
+                'error' => 'Hermes HTTP ' . $resp->status(),
+                'body'  => Str::limit($resp->body(), 500),
+            ], 502);
+        }
+
+        $data = $resp->json();
+        if (!($data['ok'] ?? false)) {
+            return response()->json([
+                'error' => $data['error'] ?? 'Hermes returned an error.',
+            ], 502);
+        }
+
+        // Re-read the speaker so we see any MCP-side updates the agent made.
+        $speaker->refresh();
+
+        $updated = [];
+        foreach ($before as $field => $oldVal) {
+            $newVal = $speaker->$field;
+            if ((string) $oldVal !== (string) $newVal) {
+                $updated[$field] = ['old' => (string) $oldVal ?: '(empty)', 'new' => (string) $newVal];
+            }
+        }
+
+        return response()->json([
+            'ok'         => true,
+            'source'     => 'hermes',
+            'updated'    => $updated,
+            'summary'    => $data['output'] ?? '',
+            'run_id'     => $data['run_id'] ?? null,
+            'confidence' => empty($updated) ? 'none' : 'inferred',
             'speaker'    => [
                 'title'        => $speaker->title,
                 'company'      => $speaker->company,

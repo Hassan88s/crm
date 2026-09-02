@@ -68,6 +68,9 @@
     .action-btn.linkedin { color:#0077b5; border-color:#b8d4e8; }
     .action-btn.linkedin:hover { background:#f0f7fb; }
     .action-btn.linkedin:disabled { opacity:0.5; cursor:not-allowed; }
+    .action-btn.hermes { color:#7c3aed; border-color:#ddd6fe; }
+    .action-btn.hermes:hover { background:#f5f3ff; }
+    .action-btn.hermes:disabled { opacity:0.5; cursor:not-allowed; }
 
     .action-btn svg { width:13px; height:13px; }
     .verify-spin { display:inline-block; width:11px; height:11px; border:2px solid #c7d2fe; border-top-color:#6366f1; border-radius:50%; animation:vspin 0.7s linear infinite; vertical-align:middle; }
@@ -470,6 +473,11 @@
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
                                 LinkedIn
                             </button>
+                            <button class="action-btn hermes" id="hermes-btn-{{ $speaker->id }}"
+                                    onclick="askHermes({{ $speaker->id }}, '{{ route('admin.speakers.askHermes', $speaker) }}', '{{ addslashes($speaker->full_name) }}')"
+                                    title="Ask local Hermes agent to verify & enrich">
+                                🤖 Hermes
+                            </button>
                             <a href="{{ route('admin.speakers.edit', $speaker) }}" class="action-btn">
                                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
@@ -675,6 +683,66 @@ function closeVerifyToast() {
 }
 
 // ── Find LinkedIn ───────────────────────────────────────────────────
+async function askHermes(id, url, name) {
+    const btn = document.getElementById('hermes-btn-' + id);
+    const origHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="verify-spin"></span> Hermes…';
+
+    try {
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': CSRF_TOKEN, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        });
+        const data = await resp.json();
+
+        if (!resp.ok || data.error) {
+            showVerifyToast(name + ' — Hermes', null, null, data.error || 'Hermes call failed.', null);
+        } else {
+            showVerifyToast(name + ' — Hermes', data.updated, data.confidence, null, data.summary);
+            // Update table cells in place (mirror the verify handler)
+            if (data.updated && Object.keys(data.updated).length > 0) {
+                const row = btn.closest('tr');
+                if (row && data.speaker) {
+                    const cells = row.querySelectorAll('td');
+                    if (data.updated.title)   cells[1].innerHTML = `<span style="color:#64748b;">${data.speaker.title || '—'}</span>`;
+                    if (data.updated.company) cells[2].innerHTML = `<span style="font-weight:500;">${data.speaker.company || '—'}</span>`;
+                    if (data.updated.country && cells[5]) {
+                        cells[5].innerHTML = data.speaker.country
+                            ? `<div style="display:flex;align-items:center;gap:5px;color:#64748b;"><svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:#94a3b8;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/></svg>${data.speaker.country}</div>`
+                            : '—';
+                    }
+                    if (data.updated.seniority && cells[4]) {
+                        const s = (data.speaker.seniority || '').toLowerCase();
+                        let cls = '';
+                        if (s.includes('c-') || ['ceo','cto','coo','cmo','cfo','c suite'].includes(s)) cls = 'seniority-c';
+                        else if (s.includes('vp')) cls = 'seniority-vp';
+                        else if (s.includes('director')) cls = 'seniority-director';
+                        else if (s.includes('manager')) cls = 'seniority-manager';
+                        cells[4].innerHTML = data.speaker.seniority
+                            ? `<span class="seniority-badge ${cls}">${data.speaker.seniority}</span>`
+                            : '<span style="color:#cbd5e1;">—</span>';
+                    }
+                    if (data.updated.linkedin_url && data.speaker.linkedin_url) {
+                        const liEl = document.getElementById('linkedin-' + id);
+                        if (liEl) {
+                            liEl.outerHTML = `<a href="${data.speaker.linkedin_url}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;margin-left:4px;color:#0077b5;" title="LinkedIn Profile" id="linkedin-${id}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg></a>`;
+                        }
+                    }
+                    row.style.transition = 'background 300ms';
+                    row.style.background = '#faf5ff';
+                    setTimeout(() => { row.style.background = ''; }, 2000);
+                }
+            }
+        }
+    } catch (e) {
+        showVerifyToast(name + ' — Hermes', null, null, 'Network error: ' + e.message, null);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+    }
+}
+
 async function findLinkedIn(id, url, name, existingUrl) {
     // If already has LinkedIn URL, open it
     if (existingUrl && existingUrl.includes('linkedin.com')) {
