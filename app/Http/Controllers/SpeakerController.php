@@ -809,10 +809,14 @@ PROMPT;
               . "(6) Return a short Markdown summary: which fields you updated (old -> new) and why, "
               . "or 'no changes needed' with a one-line reason.";
 
+        // Hermes-3 8B on Ollama takes ~6-10 min per planning turn against
+        // the 54-tool manifest. Give it 15 min headroom; we'll move to an
+        // async job pattern once we outgrow synchronous requests.
         try {
             $resp = Http::withToken($key)
                 ->acceptJson()
-                ->timeout(180)
+                ->timeout(900)
+                ->connectTimeout(15)
                 ->post($url . '/run', [
                     'task'    => $task,
                     'dry_run' => false,
